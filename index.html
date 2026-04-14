@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Serene Habit Tracker</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)',
+                        bg: 'var(--color-bg)',
+                        surface: 'var(--color-surface)',
+                        textMain: 'var(--color-text-main)',
+                        textMuted: 'var(--color-text-muted)',
+                        line: 'var(--color-line)',
+                        input: 'var(--color-input)',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Manrope', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+        
+        :root {
+            --color-primary: #4A7C59;
+            --color-bg: #f8fbf9;
+            --color-surface: #ffffff;
+            --color-text-main: #1A2320;
+            --color-text-muted: #5C6B64;
+            --color-line: #edf2ed;
+            --color-input: #f2f7f4;
+        }
+        
+        html.dark {
+            --color-primary: #5da072;
+            --color-bg: #090e0c;
+            --color-surface: #121915;
+            --color-text-main: #e2e8f0;
+            --color-text-muted: #8ba096;
+            --color-line: #1d2622;
+            --color-input: #17201c;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            color: var(--color-text-main);
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  
+            scrollbar-width: none;  
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+        }
+        
+        /* Dark mode overrides for color picker */
+        html.dark input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        html.dark input[type="color"]::-webkit-color-swatch {
+            border: none;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(2deg); }
+        }
+        .animate-float { animation: float 4s ease-in-out infinite; }
+        @keyframes petGlow {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(var(--color-primary-rgb), 0.3)); opacity: 0.9; }
+            50% { filter: drop-shadow(0 0 25px rgba(var(--color-primary-rgb), 0.8)); opacity: 1; transform: scale(1.05); }
+        }
+        .animate-pet-glow { animation: petGlow 4s ease-in-out infinite; }
+    </style>
+</head>
+<body class="overflow-hidden">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        /* INITIAL DEMO DATA */
+        const DEMO_HABITS = [
+            { id: '1', name: 'Morning Meditation', description: 'At least 10 minutes session', priority: 'High', category: 'Health', reminderTime: '07:00', color: '#4A7C59', createdAt: new Date().toISOString() },
+            { id: '2', name: 'Deep Reading', description: 'Read 20 pages every night', priority: 'Medium', category: 'Learning', reminderTime: '20:00', color: '#457b9d', createdAt: new Date().toISOString() },
+            { id: '3', name: 'Inbox Zero', description: 'Clear out all work emails', priority: 'Low', category: 'Work', reminderTime: '17:00', color: '#e63946', createdAt: new Date().toISOString() }
+        ];
+
+        /* PERSISTENCE HOOK */
+        function useLocalStorage(key, initialValue) {
+            const [storedValue, setStoredValue] = useState(() => {
+                if (typeof window === "undefined") return initialValue;
+                try {
+                    const item = window.localStorage.getItem(key);
+                    return item ? JSON.parse(item) : initialValue;
+                } catch (error) {
+                    console.log(error);
+                    return initialValue;
+                }
+            });
+            const setValue = (value) => {
+                try {
+                    const valueToStore = value instanceof Function ? value(storedValue) : value;
+                    setStoredValue(valueToStore);
+                    if (typeof window !== "undefined") {
+                        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                    }
+                } catch (error) {
+                    console.log(error);
+                }
+            };
+            return [storedValue, setValue];
+        }
+
+        /* UTILS */
+        const getTodayStr = () => new Date().toLocaleDateString('en-CA');
+        const getPastDays = (count) => {
+            const days = [];
+            for (let i = count - 1; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                days.push(d.toLocaleDateString('en-CA'));
+            }
+            return days;
+        };
+        const getAllTrackedDays = (checkins, moods) => {
+            const todayStr = getTodayStr();
+            let earliestStr = todayStr;
+            const keys = [...Object.keys(checkins), ...Object.keys(moods)];
+            keys.forEach(k => {
+                if (k < earliestStr) earliestStr = k;
+            });
+            
+            const days = [];
+            let curr = new Date(earliestStr + 'T12:00:00');
+            const end = new Date(todayStr + 'T12:00:00');
+            
+            while (curr <= end) {
+                days.push(curr.toLocaleDateString('en-CA'));
+                curr.setDate(curr.getDate() + 1);
+            }
+            return days.length < 7 ? getPastDays(7) : days;
+        };
+
+        const PET_DATA = {
+            dragon: [
+                { minLvl: 1, emoji: '🥚', name: 'Mystic Egg', suffix: 'Warm to the touch...' },
+                { minLvl: 3, emoji: '🦕', name: 'Hatchling', suffix: 'A tiny dragon! Needs focus.' },
+                { minLvl: 5, emoji: '🦖', name: 'Youngling', suffix: 'Growing stronger every day!' },
+                { minLvl: 10, emoji: '🐉', name: 'Adult Dragon', suffix: 'Majestic and powerful.' },
+                { minLvl: 20, emoji: '🐲', name: 'Ascended Dragon', suffix: 'Legendary master of flow.' }
+            ],
+            flora: [
+                { minLvl: 1, emoji: '🌱', name: 'Seedling', suffix: 'Just taking root.' },
+                { minLvl: 3, emoji: '🌿', name: 'Sprout', suffix: 'Branching out!' },
+                { minLvl: 5, emoji: '🪴', name: 'Potted Plant', suffix: 'Stable and thriving.' },
+                { minLvl: 10, emoji: '🌳', name: 'Great Oak', suffix: 'A towering presence.' },
+                { minLvl: 20, emoji: '🌺', name: 'Blooming Tree', suffix: 'Flourishing brilliantly.' }
+            ],
+            avian: [
+                { minLvl: 1, emoji: '🥚', name: 'Nest Egg', suffix: 'Quietly waiting.' },
+                { minLvl: 3, emoji: '🐣', name: 'Peeping Chick', suffix: 'Just broke through!' },
+                { minLvl: 5, emoji: '🐥', name: 'Fledgling', suffix: 'Ready to learn.' },
+                { minLvl: 10, emoji: '🦅', name: 'Eagle', suffix: 'Soaring with freedom.' },
+                { minLvl: 20, emoji: '🦚', name: 'Imperial Peafowl', suffix: 'Radiant and proud.' }
+            ],
+            cosmic: [
+                { minLvl: 1, emoji: '💫', name: 'Stardust', suffix: 'A glimmer of hope.' },
+                { minLvl: 3, emoji: '☄️', name: 'Comet', suffix: 'Gaining momentum!' },
+                { minLvl: 5, emoji: '🌙', name: 'Crescent Moon', suffix: 'Shining through the dark.' },
+                { minLvl: 10, emoji: '🪐', name: 'Planet', suffix: 'In steady orbit.' },
+                { minLvl: 20, emoji: '🌌', name: 'Galaxy', suffix: 'Boundless infinite potential.' }
+            ],
+            cat: [
+                { minLvl: 1, emoji: '🧶', name: 'Yarn Ball', suffix: 'Waiting to be played with.' },
+                { minLvl: 3, emoji: '🍼', name: 'Kitten Bottle', suffix: 'Needs a lot of care.' },
+                { minLvl: 5, emoji: '🐱', name: 'Kitten', suffix: 'Curious about the world!' },
+                { minLvl: 10, emoji: '🐈', name: 'House Cat', suffix: 'Purring with satisfaction.' },
+                { minLvl: 20, emoji: '🐅', name: 'Majestic Tiger', suffix: 'Fiercely focused.' }
+            ],
+            dog: [
+                { minLvl: 1, emoji: '🦴', name: 'Buried Bone', suffix: 'A hidden prize.' },
+                { minLvl: 3, emoji: '🐾', name: 'Paw Print', suffix: 'Taking the first steps!' },
+                { minLvl: 5, emoji: '🐶', name: 'Puppy', suffix: 'Excited for everything.' },
+                { minLvl: 10, emoji: '🐕', name: 'Loyal Dog', suffix: 'A truly faithful companion.' },
+                { minLvl: 20, emoji: '🐺', name: 'Guardian Wolf', suffix: 'A leader of the pack.' }
+            ],
+            butterfly: [
+                { minLvl: 1, emoji: '🍃', name: 'Green Leaf', suffix: 'Waiting for a friend.' },
+                { minLvl: 3, emoji: '🐛', name: 'Caterpillar', suffix: 'Munching away!' },
+                { minLvl: 5, emoji: '🥜', name: 'Chrysalis', suffix: 'Transforming in silence.' },
+                { minLvl: 10, emoji: '🦋', name: 'Butterfly', suffix: 'Spreading beautiful wings.' },
+                { minLvl: 20, emoji: '🧚', name: 'Forest Fairy', suffix: 'A magical spirit of nature.' }
+            ]
+        };
+
+        const getPetStage = (level, type) => {
+            const stages = PET_DATA[type] || PET_DATA.dragon;
+            let current = stages[0];
+            for (let stage of stages) {
+                if (level >= stage.minLvl) current = stage;
+            }
+            return current;
+        };
+
+        const App = () => {
+            const [isDarkMode, setIsDarkMode] = useLocalStorage('serene_theme', false);
+            
+            useEffect(() => {
+                if(isDarkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }, [isDarkMode]);
+
+            const [habits, setHabits] = useLocalStorage('serene_habits', DEMO_HABITS);
+            const [checkins, setCheckins] = useLocalStorage('serene_checkins', {}); 
+            const [moods, setMoods] = useLocalStorage('serene_moods', {}); 
+            const [notes, setNotes] = useLocalStorage('serene_notes', {}); 
+            const [customAudio, setCustomAudio] = useLocalStorage('serene_custom_audio', '');
+            const [petType, setPetType] = useLocalStorage('serene_pet_type', 'dragon');
+            
+            const [snoozedAlarms, setSnoozedAlarms] = useLocalStorage('serene_snoozed', []); 
+            const [activeAlarm, setActiveAlarm] = useState(null); 
+
+            const [activeTab, setActiveTab] = useState('today');
+
+            const triggerAlarm = (title, body, audioUrl) => {
+                if ("Notification" in window && Notification.permission === "granted") {
+                    const n = new Notification(title, { body });
+                    n.onclick = () => window.focus();
+                }
+                const audio = new Audio(audioUrl);
+                audio.loop = true;
+                audio.play().catch(e => console.log('Audio playback prevented:', e));
+                setActiveAlarm({ title, body, audio, audioUrl });
+            };
+
+            const handleStopAlarm = () => {
+                if (activeAlarm && activeAlarm.audio) {
+                    activeAlarm.audio.pause();
+                    activeAlarm.audio.currentTime = 0;
+                }
+                setActiveAlarm(null);
+            };
+
+            const handleSnoozeAlarm = () => {
+                if (activeAlarm && activeAlarm.audio) {
+                    activeAlarm.audio.pause();
+                    activeAlarm.audio.currentTime = 0;
+                }
+                const snoozeTime = Date.now() + 5 * 60 * 1000;
+                setSnoozedAlarms(prev => [...prev, {
+                    id: Date.now().toString(),
+                    title: activeAlarm.title,
+                    body: activeAlarm.body,
+                    audioUrl: activeAlarm.audioUrl,
+                    triggerTime: snoozeTime
+                }]);
+                setActiveAlarm(null);
+            };
+
+            const todayStr = getTodayStr();
+            const todayCheckins = checkins[todayStr] || {};
+            const todayMood = moods[todayStr] || 0;
+            const todayNote = notes[todayStr] || '';
+            
+            const lastNotifiedMinute = useRef('');
+
+            useEffect(() => {
+                if ("Notification" in window && Notification.permission === "default") {
+                    Notification.requestPermission();
+                }
+
+                const intervalId = setInterval(() => {
+                    const now = new Date();
+                    const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                    const nowMs = now.getTime();
+                    
+                    if (lastNotifiedMinute.current !== currentTimeStr) {
+                        lastNotifiedMinute.current = currentTimeStr;
+                        
+                        habits.forEach(habit => {
+                            if (habit.reminderTime === currentTimeStr) {
+                                if (!checkins[todayStr] || checkins[todayStr][habit.id] !== 'done') {
+                                    triggerAlarm("Habit Reminder", `It's time for: ${habit.name}`, customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/bell_ring.mp3');
+                                }
+                            }
+                        });
+                    }
+
+                    if (snoozedAlarms.length > 0) {
+                        const triggered = snoozedAlarms.filter(a => nowMs >= a.triggerTime);
+                        if (triggered.length > 0) {
+                            triggered.forEach(a => {
+                                triggerAlarm(a.title, a.body, a.audioUrl);
+                            });
+                            setSnoozedAlarms(prev => prev.filter(a => nowMs < a.triggerTime));
+                        }
+                    }
+                }, 5000);
+
+                return () => clearInterval(intervalId);
+            }, [habits, checkins, todayStr, customAudio, snoozedAlarms]);
+
+            const getHabitStreak = (habitId) => {
+                let current = 0;
+                let best = 0;
+                let running = 0;
+                const sortedDates = Object.keys(checkins).sort();
+                for (let date of sortedDates) {
+                    if (checkins[date][habitId] === 'done') {
+                        running++;
+                        if (running > best) best = running;
+                    } else if (checkins[date][habitId] === 'skip') {
+                        running = 0;
+                    }
+                }
+                let cur = 0;
+                let d = new Date();
+                while(true) {
+                    let dStr = d.toLocaleDateString('en-CA');
+                    if (checkins[dStr] && checkins[dStr][habitId] === 'done') {
+                        cur++;
+                        d.setDate(d.getDate() - 1);
+                    } else if (dStr === todayStr && !checkins[dStr] || (checkins[dStr] && !checkins[dStr][habitId])) {
+                        d.setDate(d.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+                current = cur;
+                if(current > best) best = current;
+                return { current, best };
+            };
+
+            const toggleCheckin = (habitId, status) => {
+                setCheckins(prev => {
+                    const next = { ...prev };
+                    if (!next[todayStr]) next[todayStr] = {};
+                    if (next[todayStr][habitId] === status) {
+                        delete next[todayStr][habitId];
+                    } else {
+                        next[todayStr][habitId] = status;
+                    }
+                    return next;
+                });
+            };
+
+            /* Gamification logic */
+            const totalCompletions = Object.values(checkins).reduce((acc, marks) => acc + Object.values(marks).filter(v => v=== 'done').length, 0);
+            let currentTotalStreakXP = 0;
+            habits.forEach(h => {
+                const { current } = getHabitStreak(h.id);
+                if(current > 0) currentTotalStreakXP += (current * 5); 
+            });
+            const totalXP = (totalCompletions * 20) + currentTotalStreakXP;
+            // Level scaling formula
+            const currentLevel = Math.floor(Math.sqrt((totalXP < 0 ? 0 : totalXP) / 50)) + 1;
+            const nextLevelXP = Math.pow(currentLevel, 2) * 50;
+            const prevLevelXP = Math.pow(currentLevel - 1, 2) * 50;
+            const progressPercent = Math.max(0, Math.min(100, ((totalXP - prevLevelXP) / (nextLevelXP - prevLevelXP)) * 100));
+
+
+            const TodayView = () => {
+                const [localNote, setLocalNote] = useState(todayNote);
+                const [saveStatus, setSaveStatus] = useState('Saved');
+
+                useEffect(() => {
+                    setLocalNote(todayNote);
+                }, [todayNote]);
+
+                const handleNoteChange = (e) => {
+                    setLocalNote(e.target.value);
+                    setSaveStatus('Unsaved');
+                };
+
+                const handleNoteBlur = () => {
+                    if (localNote !== todayNote) {
+                        setSaveStatus('Saving...');
+                        setTimeout(() => {
+                            setNotes(prev => ({...prev, [todayStr]: localNote}));
+                            setSaveStatus('Saved');
+                        }, 400); 
+                    }
+                };
+
+                return (
+                <div className="animate-fade-in w-full space-y-10">
+                    <header className="mb-2">
+                        <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Hello there.</h1>
+                        <p className="text-xs md:text-sm font-bold tracking-widest text-textMuted uppercase mt-2">
+                            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric'})}
+                        </p>
+                    </header>
+
+                    <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
+                        <div className="w-full lg:w-[35%] order-2 lg:order-1 relative">
+                            {/* MOBILE PET HERO */}
+                            <div className="lg:hidden bg-gradient-to-br from-surface to-bg p-6 pb-5 rounded-3xl shadow-sm border border-line flex flex-col mb-8 overflow-hidden relative cursor-pointer" onClick={() => {
+                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'I am growing stronger!', 'Rawr!'];
+                                alert(msgs[Math.floor(Math.random() * msgs.length)]);
+                            }}>
+                                <div className="absolute -inset-10 bg-primary/5 blur-2xl rounded-full z-0 pointer-events-none animate-pet-glow"></div>
+                                <div className="flex items-center justify-between mb-4 w-full">
+                                    <div className="flex flex-col z-10 relative">
+                                        <h3 className="text-xl font-heading font-extrabold text-textMain">{getPetStage(currentLevel, petType).name}</h3>
+                                        <p className="text-[11px] font-bold text-textMuted uppercase tracking-widest mt-1">Level {currentLevel} • {getPetStage(currentLevel, petType).suffix}</p>
+                                    </div>
+                                    <div className="text-5xl animate-float z-10 relative drop-shadow-[0_10px_10px_rgba(0,0,0,0.15)]">
+                                        {getPetStage(currentLevel, petType).emoji}
+                                    </div>
+                                </div>
+                                <div className="w-full z-10 relative flex flex-col gap-1.5 pt-2 border-t border-line/50">
+                                    <div className="flex justify-between w-full">
+                                        <span className="text-[9px] font-bold text-textMuted uppercase tracking-widest">To Level {currentLevel + 1}</span>
+                                        <span className="text-[9px] font-extrabold text-primary shrink-0">{totalXP} XP</span>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-surface/50 rounded-full overflow-hidden border border-line/30 shadow-inner">
+                                        <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{width: `${progressPercent}%`}}></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-surface p-7 rounded-3xl shadow-sm border border-line flex flex-col sticky top-6">
+                                <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted mb-6 flex items-center gap-2">
+                                    <i className="ph-fill ph-smiley text-base text-primary/80"></i> Mood & Notes
+                                </h2>
+                                
+                                <div className="space-y-8">
+                                    <div>
+                                        <label className="block text-sm font-bold text-textMain mb-3">How are you feeling?</label>
+                                        <div className="flex justify-between gap-1 sm:gap-2">
+                                            {[{val:1, icon:'😞'}, {val:2, icon:'😐'}, {val:3, icon:'🙂'}, {val:4, icon:'😊'}, {val:5, icon:'🤩'}].map(m => (
+                                                <button 
+                                                    key={m.val}
+                                                    onClick={() => setMoods(prev => ({...prev, [todayStr]: m.val}))}
+                                                    className={`aspect-square w-12 sm:w-14 rounded-2xl text-[24px] sm:text-[28px] flex items-center justify-center transition-all ${todayMood === m.val ? 'bg-primary/10 border border-primary/30 scale-110 saturate-[1.25] shadow-sm relative dark:after:content-[\'\'] dark:after:absolute dark:after:inset-0 dark:after:rounded-2xl dark:after:shadow-[0_0_15px_var(--color-primary)] dark:after:z-[-1]' : 'bg-input border border-transparent grayscale hover:grayscale-0 hover:bg-line'}`}
+                                                >
+                                                    {m.icon}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col relative w-full">
+                                        <label className="block text-sm font-bold text-textMain mb-3">Journal Entry</label>
+                                        <textarea 
+                                            className="w-full bg-input border border-line focus:border-primary/50 focus:bg-surface rounded-2xl p-4 md:p-5 text-sm md:text-base focus:ring-0 transition-all resize-none h-44 shadow-inner"
+                                            placeholder="Write your thoughts..."
+                                            value={localNote}
+                                            onChange={handleNoteChange}
+                                            onBlur={handleNoteBlur}
+                                        ></textarea>
+                                        <div className="absolute right-4 bottom-4 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-textMuted/40 pointer-events-none">
+                                           {saveStatus === 'Saved' ? <><i className="ph-bold ph-check-circle text-primary"></i> Saved</> : saveStatus === 'Unsaved' ? <><i className="ph-bold ph-pencil"></i> Unsaved</> : <><i className="ph-bold ph-spinner animate-spin"></i> Saving...</>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="w-full lg:w-[65%] order-1 lg:order-2">
+                            <h2 className="text-xl font-heading font-extrabold text-textMain mb-6 flex items-center gap-2">
+                                Your Habits
+                            </h2>
+                            
+                            {habits.length === 0 ? (
+                                <div className="text-center py-16 bg-surface rounded-3xl shadow-sm border border-line border-dashed flex flex-col items-center">
+                                    <i className="ph ph-wind text-5xl mb-4 text-textMuted opacity-20"></i>
+                                    <p className="text-textMuted text-sm font-medium mb-4">No habits aligned for today.</p>
+                                    <button onClick={() => setActiveTab('settings')} className="bg-primary text-white font-bold py-3 px-6 rounded-xl text-sm transition-transform hover:-translate-y-0.5 shadow-md">Set up a Habit</button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {habits.sort((a,b) => {
+                                        const p = {High:3, Medium:2, Low:1};
+                                        return p[b.priority] - p[a.priority];
+                                    }).map(habit => {
+                                        const status = todayCheckins[habit.id];
+                                        const { current: streak } = getHabitStreak(habit.id);
+                                        return (
+                                            <div key={habit.id} className="bg-surface p-5 md:p-6 rounded-3xl shadow-sm border border-line flex items-center justify-between gap-4 transition-all hover:shadow-md">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    <div className="flex items-center gap-3 mb-1.5">
+                                                        <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{backgroundColor: habit.color}}></span>
+                                                        <h3 className="font-bold text-textMain font-heading text-lg md:text-xl truncate leading-tight">{habit.name}</h3>
+                                                        <span className={`hidden md:inline-block ml-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${habit.priority === 'High' ? 'bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-400' : habit.priority === 'Medium' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-400'}`}>
+                                                            {habit.priority}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {habit.description && <p className="text-sm text-textMuted mb-3 truncate">{habit.description}</p>}
+                                                    
+                                                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-textMuted">
+                                                        <span className="flex items-center gap-1.5"><i className="ph ph-folder text-sm opacity-70"></i> {habit.category}</span>
+                                                        <span className="flex items-center gap-1.5"><i className="ph ph-clock text-sm opacity-70"></i> {habit.reminderTime}</span>
+                                                        <span className="flex items-center gap-1.5 text-orange-500 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-400 px-2 py-0.5 rounded-md"><i className="ph-fill ph-fire text-sm"></i> {streak} Day Streak</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col gap-2 shrink-0">
+                                                    <button 
+                                                        onClick={() => toggleCheckin(habit.id, 'done')}
+                                                        className={`w-14 h-12 md:w-16 md:h-14 rounded-2xl flex items-center justify-center text-2xl transition-all ${status === 'done' ? 'bg-primary text-white shadow-md' : 'bg-input text-textMuted border border-line hover:bg-primary/10 hover:text-primary hover:border-primary/30'}`}
+                                                    >
+                                                        <i className="ph-bold ph-check"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => toggleCheckin(habit.id, 'skip')}
+                                                        className={`w-14 h-8 md:w-16 md:h-8 rounded-xl flex items-center justify-center text-[11px] uppercase tracking-wider font-bold transition-all ${status === 'skip' ? 'bg-textMain text-surface shadow-md' : 'bg-input text-textMuted border border-line hover:bg-line hover:text-textMain'}`}
+                                                    >
+                                                        Skip
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                );
+            };
+
+            const FocusView = () => {
+                const [customMinutes, setCustomMinutes] = useState(25);
+                const [timeLeft, setTimeLeft] = useState(25 * 60);
+                const [isActive, setIsActive] = useState(false);
+                
+                useEffect(() => {
+                    let interval = null;
+                    if (isActive && timeLeft > 0) {
+                        interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+                    } else if (isActive && timeLeft === 0) {
+                        setIsActive(false);
+                        triggerAlarm("Focus Zone", "Time is up! Great job focusing.", customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/glass.mp3');
+                    }
+                    return () => clearInterval(interval);
+                }, [isActive, timeLeft]);
+
+                const handleSliderChange = (e) => {
+                    const mins = parseInt(e.target.value);
+                    setCustomMinutes(mins);
+                    setIsActive(false);
+                    setTimeLeft(mins * 60);
+                };
+
+                const resetTimer = () => {
+                    setIsActive(false);
+                    setTimeLeft(customMinutes * 60);
+                };
+
+                const toggleTimer = () => setIsActive(!isActive);
+                const formatTime = (seconds) => {
+                    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                    const s = (seconds % 60).toString().padStart(2, '0');
+                    return `${m}:${s}`;
+                };
+
+                return (
+                    <div className="animate-fade-in w-full space-y-10 flex flex-col items-center justify-center min-h-[70vh]">
+                        <header className="mb-2 text-center">
+                            <h1 className="text-3xl md:text-5xl font-heading font-extrabold tracking-tight text-textMain">Focus Zone</h1>
+                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-3">Custom Time Selection</p>
+                        </header>
+
+                        <div className="w-full max-w-sm px-6 py-6 bg-surface border border-line rounded-3xl shadow-sm z-10 relative flex flex-col items-center gap-4">
+                            <div className="flex justify-between w-full text-xs font-bold text-textMuted uppercase tracking-widest items-center">
+                                <span>1m</span>
+                                <span className="text-primary font-extrabold text-base bg-primary/10 px-3 py-1 rounded-lg">{customMinutes} MIN</span>
+                                <span>120m</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="1" 
+                                max="120" 
+                                value={customMinutes} 
+                                onChange={handleSliderChange}
+                                className="w-full h-2.5 bg-input rounded-full appearance-none cursor-pointer accent-primary focus:outline-none"
+                            />
+                        </div>
+
+                        <div className="relative w-80 h-80 md:w-96 md:h-96 flex items-center justify-center bg-surface border-[8px] md:border-[12px] border-bg rounded-full shadow-inner my-2 md:my-6 transition-colors duration-500">
+                            <div className={`absolute inset-0 rounded-full border-[8px] transition-colors duration-1000 ${isActive ? 'border-primary/50 scale-100' : 'border-transparent scale-95 opacity-0'}`} style={{clipPath: 'circle(50% at 50% 50%)'}}></div>
+                            <h2 className="text-7xl md:text-[100px] font-heading font-bold text-textMain tracking-tighter tabular-nums z-10">{formatTime(timeLeft)}</h2>
+                        </div>
+                        
+                        <div className="flex gap-5 z-10">
+                            <button onClick={toggleTimer} className={`w-20 h-20 md:w-24 md:h-24 rounded-3xl shadow-lg flex items-center justify-center text-3xl md:text-4xl transition-transform hover:-translate-y-1 ${isActive ? 'bg-[#ffbc42] text-white' : 'bg-primary text-white'}`}>
+                                <i className={isActive ? 'ph-bold ph-pause' : 'ph-bold ph-play'}></i>
+                            </button>
+                            <button onClick={resetTimer} className="w-20 h-20 md:w-24 md:h-24 bg-surface border border-line rounded-3xl flex items-center justify-center text-3xl text-textMuted hover:text-textMain hover:bg-bg transition-all">
+                                <i className="ph-bold ph-arrow-counter-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            const JournalView = () => {
+                const datesWithNotes = Object.keys(notes).map(d => ({ date: d, note: notes[d], mood: moods[d] })).filter(n => n.note || n.mood).sort((a,b) => new Date(b.date) - new Date(a.date));
+                const emojiMap = {1:'😞', 2:'😐', 3:'🙂', 4:'😊', 5:'🤩'};
+
+                return (
+                    <div className="animate-fade-in w-full space-y-10">
+                        <header className="mb-2">
+                            <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Journal</h1>
+                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-2">History & Reflections</p>
+                        </header>
+
+                        {datesWithNotes.length === 0 ? (
+                            <div className="text-center py-20 bg-surface rounded-3xl shadow-sm border border-line border-dashed flex flex-col items-center">
+                                <i className="ph ph-notebook text-5xl mb-4 text-textMuted opacity-30"></i>
+                                <p className="text-textMuted text-sm font-medium">No journal entries found yet.<br/>Log your feelings in the "Today" tab!</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+                                {datesWithNotes.map(entry => (
+                                    <div key={entry.date} className="bg-surface p-7 md:p-8 rounded-3xl shadow-sm border border-line flex flex-col break-inside-avoid">
+                                        <div className="flex justify-between items-center mb-5 border-b border-line pb-4">
+                                            <span className="font-extrabold text-textMain text-sm uppercase tracking-wider">{new Date(entry.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}</span>
+                                            {entry.mood && <span className="text-3xl drop-shadow-sm" title={`Mood level: ${entry.mood}`}>{emojiMap[entry.mood]}</span>}
+                                        </div>
+                                        <p className="text-textMuted text-[15px] font-medium leading-relaxed whitespace-pre-wrap">{entry.note || <span className="italic opacity-50">No text logged for today.</span>}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            const AnalyticsView = () => {
+                const chartRef = useRef(null);
+                const moodChartRef = useRef(null);
+                const textColor = isDarkMode ? '#e2e8f0' : '#1A2320';
+                const gridColor = isDarkMode ? '#1d2622' : '#edf2ed';
+
+                useEffect(() => {
+                    if (chartRef.current && habits.length > 0) {
+                        const ctx = chartRef.current.getContext('2d');
+                        const allDays = getAllTrackedDays(checkins, moods);
+                        const dataset = allDays.map(d => {
+                            let total = habits.length;
+                            let done = 0;
+                            if (checkins[d]) habits.forEach(h => { if (checkins[d][h.id] === 'done') done++; });
+                            return total ? (done / total) * 100 : 0;
+                        });
+
+                        const chart = new Chart(ctx, {
+                            type: 'bar',
+                            data: { labels: allDays.map(d => parseInt(d.substring(8))), datasets: [{ label: 'Completion %', data: dataset, backgroundColor: '#4A7C59', borderRadius: 4 }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins:{legend:{display:false}}, scales: { x: { grid: { display:false }, ticks: {color: textColor, autoSkip: true, maxTicksLimit: 30} }, y: { beginAtZero: true, max: 100, border:{display:false}, grid: {color: gridColor}, ticks: {color: textColor} } } }
+                        });
+                        return () => chart.destroy();
+                    }
+                }, [checkins, habits, isDarkMode, moods]);
+
+                useEffect(() => {
+                    if (moodChartRef.current) {
+                        const ctx = moodChartRef.current.getContext('2d');
+                        const allDays = getAllTrackedDays(checkins, moods);
+                        const dataset = allDays.map(d => moods[d] || null);
+
+                        const chart = new Chart(ctx, {
+                            type: 'line',
+                            data: { labels: allDays.map(d => parseInt(d.substring(8))), datasets: [{ label: 'Mood', data: dataset, borderColor: '#457b9d', backgroundColor: 'rgba(69, 123, 157, 0.1)', fill: true, tension: 0.4, spanGaps: true }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins:{legend:{display:false}}, scales: { x:{grid:{display:false}, ticks: {color: textColor, autoSkip: true, maxTicksLimit: 30}}, y: { min: 1, max: 5, ticks:{stepSize:1, color: textColor}, border:{display:false}, grid: {color: gridColor} } } }
+                        });
+                        return () => chart.destroy();
+                    }
+                }, [moods, isDarkMode, checkins]);
+
+                const past90 = useMemo(() => getPastDays(91), []);
+                
+                return (
+                    <div className="animate-fade-in w-full space-y-10">
+                        <header className="mb-2">
+                            <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Analytics</h1>
+                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-2">Activity Visualized</p>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <section className="bg-surface p-7 rounded-3xl shadow-sm border border-line flex flex-col">
+                                <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted mb-6 flex items-center gap-2">
+                                    <i className="ph-fill ph-chart-bar text-base text-primary"></i> All-Time Completion
+                                </h2>
+                                <div className="h-56 md:h-64 w-full"><canvas ref={chartRef}></canvas></div>
+                            </section>
+
+                            <section className="bg-surface p-7 rounded-3xl shadow-sm border border-line flex flex-col">
+                                <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted mb-6 flex items-center gap-2">
+                                    <i className="ph-fill ph-heart-beat text-base text-blue-500"></i> Mood Trend Log
+                                </h2>
+                                <div className="h-56 md:h-64 w-full"><canvas ref={moodChartRef}></canvas></div>
+                            </section>
+                        </div>
+
+                        <section className="bg-surface p-7 md:p-8 rounded-3xl shadow-sm border border-line overflow-hidden">
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted mb-6 flex items-center gap-2">
+                                <i className="ph-fill ph-calendar-blank text-base text-orange-400"></i> 90-Day Contribution
+                            </h2>
+                            <div className="overflow-x-auto hide-scrollbar">
+                                <div className="grid grid-rows-7 grid-flow-col gap-1.5 min-w-max pb-3 pt-1 px-1">
+                                    {past90.map(d => {
+                                        let doneCount = 0;
+                                        if (checkins[d]) doneCount = Object.values(checkins[d]).filter(v => v === 'done').length;
+                                        const intensity = doneCount === 0 ? 'bg-bg' : doneCount === 1 ? 'bg-primary/40' : doneCount === 2 ? 'bg-primary/80' : 'bg-primary shadow-sm';
+                                        return <div key={d} className={`w-3.5 h-3.5 md:w-4 md:h-4 rounded-[3px] ${intensity} transition-transform hover:scale-[1.3] hover:z-10 cursor-crosshair`} title={`Date: ${d} | Done: ${doneCount}`}></div>;
+                                    })}
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                );
+            };
+
+            const ReviewView = () => {
+                let globalBestStreak = 0;
+                let bestHabit = '';
+                habits.forEach(h => {
+                    const { best } = getHabitStreak(h.id);
+                    if(best >= globalBestStreak && best > 0) {
+                        globalBestStreak = best;
+                        bestHabit = h.name;
+                    }
+                });
+
+                const isSunday = new Date().getDay() === 0;
+
+                const availableMonths = [...new Set(Object.keys(checkins).map(d => d.substring(0, 7)))].sort().reverse();
+                const currentMonthStr = new Date().toISOString().substring(0, 7);
+                if (!availableMonths.includes(currentMonthStr)) {
+                    availableMonths.unshift(currentMonthStr);
+                }
+                const [selectedMonth, setSelectedMonth] = useState(availableMonths[0]);
+
+                const monthCheckins = Object.keys(checkins).filter(k => k.startsWith(selectedMonth));
+                const habitMonthlyCounts = habits.map(h => {
+                    let count = 0;
+                    monthCheckins.forEach(d => {
+                        if (checkins[d][h.id] === 'done') count++;
+                    });
+                    return { ...h, count };
+                });
+
+                const formatMonth = (str) => {
+                    const date = new Date(str + '-01T12:00:00');
+                    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                };
+
+                return (
+                    <div className="animate-fade-in w-full space-y-10">
+                        <header className="mb-2">
+                            <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Review</h1>
+                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-2">Insights & Progress</p>
+                        </header>
+
+                        <div className="grid grid-cols-2 gap-6 lg:gap-8">
+                            <div className="bg-surface p-8 lg:p-10 flex flex-col items-center justify-center rounded-3xl shadow-sm border border-line text-center">
+                                <p className="text-sm font-bold uppercase tracking-wider text-textMuted mb-3">Total Validations</p>
+                                <p className="text-6xl md:text-7xl font-heading font-extrabold text-textMain leading-none">{totalCompletions}</p>
+                            </div>
+                            <div className="bg-surface p-8 lg:p-10 flex flex-col items-center justify-center rounded-3xl shadow-sm border border-line text-center">
+                                <p className="text-sm font-bold uppercase tracking-wider text-textMuted mb-3">Best Streak Ever</p>
+                                <p className="text-6xl md:text-7xl font-heading font-extrabold text-orange-500 leading-none">{globalBestStreak}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+                            <section className="bg-gradient-to-br from-primary to-[#2d4d37] p-8 lg:p-10 rounded-3xl shadow-lg relative overflow-hidden flex flex-col justify-center min-h-[300px]">
+                                <div className="absolute -right-8 -bottom-8 opacity-[0.08] transform rotate-12">
+                                    <i className="ph-fill ph-plant text-[200px] text-white"></i>
+                                </div>
+                                <h2 className="text-xs font-bold uppercase tracking-wider text-green-200/90 mb-3 flex items-center gap-2 relative z-10">
+                                    <i className="ph-fill ph-lightbulb text-base"></i> Monthly Insight
+                                </h2>
+                                <p className="text-white text-xl md:text-2xl font-semibold leading-relaxed mb-4 relative z-10">
+                                    Awesome progression! Your most consistent routine is <br/><span className="inline-block mt-2 font-bold underline decoration-green-400/80 decoration-4 underline-offset-4">{bestHabit || 'just getting started'}</span>.
+                                </p>
+                                <p className="text-green-50 text-sm md:text-base font-medium relative z-10 leading-relaxed opacity-90">Small, calculated efforts accumulate into colossal achievements. Keep it up!</p>
+                            </section>
+
+                            <section className="bg-surface p-8 lg:p-10 rounded-3xl shadow-sm border border-line flex flex-col">
+                                <div className="flex justify-between items-center mb-8">
+                                    <h2 className="text-2xl font-heading font-extrabold text-textMain">Weekly Digest</h2>
+                                    {isSunday && <span className="text-[10px] bg-primary text-white px-2.5 py-1 rounded-md font-bold uppercase tracking-wide">New</span>}
+                                </div>
+                                <div className="space-y-8 flex-1">
+                                    <div>
+                                        <div className="flex items-center gap-4 mb-3">
+                                            <div className="w-10 h-10 bg-yellow-100/50 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-500 rounded-xl flex items-center justify-center shrink-0">
+                                                <i className="ph-fill text-xl ph-trophy"></i>
+                                            </div>
+                                            <h3 className="text-sm uppercase font-extrabold text-textMain tracking-wider">Win of the week</h3>
+                                        </div>
+                                        <p className="text-base text-textMuted font-medium pl-14 leading-relaxed">{bestHabit ? `You stayed highly committed to ${bestHabit}. Great discipline!` : 'Setting up the foundation for success!'}</p>
+                                    </div>
+                                    <div className="pt-8 border-t border-line">
+                                        <div className="flex items-center gap-4 mb-3">
+                                            <div className="w-10 h-10 bg-blue-100/50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-500 rounded-xl flex items-center justify-center shrink-0">
+                                                <i className="ph-fill text-xl ph-target"></i>
+                                            </div>
+                                            <h3 className="text-sm uppercase font-extrabold text-textMain tracking-wider">Needs Focus</h3>
+                                        </div>
+                                        <p className="text-base text-textMuted font-medium pl-14 leading-relaxed">Identify one neglected habit to prioritize first thing tomorrow morning.</p>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+
+                        {/* NEW MONTHLY REVIEW SECTION */}
+                        <section className="bg-surface p-8 lg:p-10 rounded-3xl shadow-sm border border-line flex flex-col mt-6 lg:mt-8">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                                <h2 className="text-2xl font-heading font-extrabold text-textMain">Monthly Habit Breakdown</h2>
+                                <select 
+                                    value={selectedMonth} 
+                                    onChange={e => setSelectedMonth(e.target.value)}
+                                    className="bg-input border border-line text-textMain px-4 py-3 rounded-xl text-sm font-extrabold focus:outline-none focus:border-primary cursor-pointer w-full md:w-auto shadow-sm"
+                                >
+                                    {availableMonths.map(m => (
+                                        <option key={m} value={m}>{formatMonth(m)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                                {habitMonthlyCounts.map(h => (
+                                    <div key={h.id} className="bg-bg p-5 rounded-2xl border border-line flex items-center justify-between group transition-colors hover:border-primary/50">
+                                        <div className="flex items-center gap-3 overflow-hidden pr-3">
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{backgroundColor: `${h.color}20`, color: h.color}}>
+                                                <i className="ph-fill ph-check-circle text-lg"></i>
+                                            </div>
+                                            <span className="font-bold text-textMain text-sm truncate">{h.name}</span>
+                                        </div>
+                                        <div className="bg-primary/10 text-primary min-w-[3rem] text-center px-3 py-1.5 rounded-lg font-extrabold text-base border-primary/20 shadow-inner">
+                                            {h.count}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </div>
+                );
+            };
+
+            const SettingsView = () => {
+                const [isAdding, setIsAdding] = useState(false);
+                const [editingId, setEditingId] = useState(null);
+                const [form, setForm] = useState({ name: '', description: '', priority: 'Medium', category: 'Health', reminderTime: '08:00', color: '#4A7C59' });
+                
+                const handleAdd = (e) => {
+                    e.preventDefault();
+                    if (!form.name.trim()) return;
+                    if (editingId) {
+                        setHabits(habits.map(h => h.id === editingId ? { ...h, ...form } : h));
+                        setEditingId(null);
+                    } else {
+                        setHabits([...habits, { ...form, id: Date.now().toString(), createdAt: new Date().toISOString() }]);
+                    }
+                    setIsAdding(false);
+                    setForm({ name: '', description: '', priority: 'Medium', category: 'Health', reminderTime: '08:00', color: '#4A7C59' });
+                };
+
+                const deleteHabit = (id) => {
+                    if(confirm('Are you strictly sure you want to permanently delete this habit?')) {
+                        setHabits(habits.filter(h => h.id !== id));
+                    }
+                };
+
+                const editHabit = (habit) => {
+                    setForm(habit);
+                    setEditingId(habit.id);
+                    setIsAdding(true);
+                };
+
+                const cancelEdit = () => {
+                    setIsAdding(false);
+                    setEditingId(null);
+                    setForm({ name: '', description: '', priority: 'Medium', category: 'Health', reminderTime: '08:00', color: '#4A7C59' });
+                };
+
+                return (
+                    <div className="animate-fade-in w-full space-y-10">
+                        <header className="mb-2">
+                            <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Configuration</h1>
+                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-2">Habits & System Tweaks</p>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+                            <div className="space-y-8">
+                                
+                                {/* Appearance Toggle */}
+                                <section className="bg-surface p-7 md:p-8 rounded-3xl shadow-sm border border-line flex flex-col gap-2">
+                                    <h2 className="font-heading font-extrabold text-xl pb-2">Preferences</h2>
+                                    <div className="flex items-center justify-between mt-2 border-b border-line pb-6">
+                                        <div className="flex items-center gap-3">
+                                            <i className="ph-fill ph-moon text-xl text-textMuted"></i>
+                                            <span className="font-bold text-textMain text-sm">Dark Mode</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setIsDarkMode(!isDarkMode)} 
+                                            className={`w-14 h-8 rounded-full relative transition-colors shadow-inner ${isDarkMode ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-700'}`}
+                                        >
+                                            <div className={`w-6 h-6 bg-white rounded-full absolute top-1 transition-transform shadow-md ${isDarkMode ? 'translate-x-[26px]' : 'translate-x-1'}`}></div>
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-4">
+                                        <div className="flex items-center gap-3">
+                                            <i className="ph-fill ph-music-notes text-xl text-textMuted"></i>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-textMain text-sm">Custom Alert Sound</span>
+                                                <span className="text-[10px] uppercase font-bold tracking-widest text-textMuted mt-0.5">{customAudio ? 'Custom loaded' : 'Default tones'}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {customAudio && (
+                                                <button onClick={() => setCustomAudio('')} className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors" title="Remove custom sound">
+                                                    <i className="ph-bold ph-trash"></i>
+                                                </button>
+                                            )}
+                                            <div className="relative">
+                                                <input type="file" accept="audio/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if(file) {
+                                                        if (file.size > 2 * 1024 * 1024) {
+                                                            alert("Audio file too large. Please select a file under 2MB.");
+                                                            return;
+                                                        }
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setCustomAudio(ev.target.result);
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+                                                <button className="bg-input text-textMain px-4 py-2 rounded-xl text-xs font-bold hover:bg-line transition-all border border-line shadow-sm pointer-events-none">
+                                                    {customAudio ? 'Replace' : 'Upload'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-4 border-t border-line mt-4">
+                                        <div className="flex items-center gap-3">
+                                            <i className="ph-fill ph-cat text-xl text-textMuted"></i>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-textMain text-sm">Companion Type</span>
+                                                <span className="text-[10px] uppercase font-bold tracking-widest text-textMuted mt-0.5">Evolves with level</span>
+                                            </div>
+                                        </div>
+                                        <select 
+                                            value={petType} 
+                                            onChange={e => setPetType(e.target.value)}
+                                            className="bg-input border border-line text-textMain px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-primary cursor-pointer shadow-sm"
+                                        >
+                                            <option value="dragon">🐉 Dragon</option>
+                                            <option value="flora">🌺 Flora</option>
+                                            <option value="avian">🦚 Avian</option>
+                                            <option value="cosmic">🌌 Cosmic</option>
+                                            <option value="cat">🐈 Cat</option>
+                                            <option value="dog">🐕 Dog</option>
+                                            <option value="butterfly">🦋 Butterfly</option>
+                                        </select>
+                                    </div>
+                                </section>
+
+                                {!isAdding ? (
+                                    <button 
+                                        onClick={() => setIsAdding(true)}
+                                        className="w-full bg-textMain text-surface py-6 rounded-3xl font-extrabold hover:opacity-90 transition-all shadow-md flex justify-center items-center gap-3 text-lg"
+                                    >
+                                        <i className="ph-bold ph-plus text-2xl"></i> Add New Habit
+                                    </button>
+                                ) : (
+                                    <form onSubmit={handleAdd} className="bg-surface p-7 md:p-8 rounded-3xl shadow-sm border border-line flex flex-col gap-6">
+                                        <h2 className="font-heading font-extrabold text-2xl border-b border-line pb-4">{editingId ? 'Edit Routine' : 'New Routine'}</h2>
+                                        
+                                        <div className="space-y-5">
+                                            <div>
+                                                <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Habit Name</label>
+                                                <input type="text" className="w-full bg-input border-0 rounded-2xl p-4 text-base font-semibold focus:ring-2 focus:ring-primary/20 transition-all" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Drink Water" required />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Description</label>
+                                                <input type="text" className="w-full bg-input border-0 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-primary/20 transition-all" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Optional details..." />
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-5">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Priority</label>
+                                                    <select className="w-full bg-input border-0 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-primary/20" value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}>
+                                                        <option>High</option><option>Medium</option><option>Low</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Category</label>
+                                                    <select className="w-full bg-input border-0 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-primary/20" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                                                        <option>Health</option><option>Work</option><option>Learning</option><option>Personal</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-5">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Time</label>
+                                                    <input type="time" className="w-full bg-input border-0 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-primary/20" value={form.reminderTime} onChange={e => setForm({...form, reminderTime: e.target.value})} required/>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-textMuted mb-2.5 uppercase tracking-wider">Dot Color</label>
+                                                    <div className="relative">
+                                                        <input type="color" className="w-full h-[48px] opacity-0 absolute inset-0 cursor-pointer z-10" value={form.color} onChange={e => setForm({...form, color: e.target.value})}/>
+                                                        <div className="w-full h-[48px] bg-input rounded-xl flex items-center px-4 pointer-events-none relative z-0">
+                                                            <div className="w-5 h-5 rounded-full shadow-sm" style={{backgroundColor: form.color}}></div>
+                                                            <span className="ml-3 text-sm font-bold opacity-80">{form.color}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-4 pt-4 mt-2">
+                                            <button type="button" onClick={cancelEdit} className="flex-[0.3] bg-input text-textMuted py-3.5 rounded-xl text-sm font-extrabold hover:bg-line hover:text-textMain transition-all">Cancel</button>
+                                            <button type="submit" className="flex-1 bg-primary text-white py-3.5 rounded-xl text-sm font-extrabold shadow-md hover:bg-primary/80 transition-all">Save Habit</button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                <section className="bg-surface border border-red-500/20 p-7 rounded-3xl flex items-center justify-between gap-4 shadow-sm">
+                                    <div>
+                                        <h3 className="font-extrabold text-red-500 text-base">Factory Reset</h3>
+                                        <p className="text-sm font-medium text-red-500/80 mt-1 w-full max-w-[200px]">Erase all habits and history permanently.</p>
+                                    </div>
+                                    <button onClick={() => {
+                                        if(confirm('Warning: This deletes all data permanently. Are you sure?')) {
+                                            setHabits([]); setCheckins({}); setMoods({}); setNotes({});
+                                            localStorage.removeItem('serene_theme');
+                                        }
+                                    }} className="bg-red-500/10 text-red-500 px-5 py-3 rounded-xl text-xs font-extrabold hover:bg-red-500/20 transition-colors shrink-0">Clear Data</button>
+                                </section>
+                            </div>
+
+                            <div className="flex flex-col h-full">
+                                <section className="bg-surface rounded-3xl shadow-sm border border-line overflow-hidden flex flex-col h-full min-h-[400px]">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted p-6 md:p-7 border-b border-line flex items-center justify-between bg-bg/50">
+                                        Manage Habits
+                                        <span className="bg-input text-textMain py-1.5 px-3 rounded-lg text-[10px] font-extrabold">{habits.length} routines</span>
+                                    </h2>
+                                    <ul className="divide-y divide-line overflow-y-auto flex-1 h-full max-h-[650px] hide-scrollbar">
+                                        {habits.map(h => (
+                                            <li key={h.id} className="p-6 flex items-center justify-between hover:bg-bg transition-colors group">
+                                                <div className="flex items-center gap-5">
+                                                    <span className="w-3.5 h-3.5 rounded-full shadow-sm" style={{backgroundColor: h.color}}></span>
+                                                    <div>
+                                                        <p className="font-extrabold text-base text-textMain leading-tight">{h.name}</p>
+                                                        <p className="text-xs font-bold text-textMuted mt-1.5 uppercase tracking-wide opacity-80">{h.category} &nbsp;&bull;&nbsp; {h.priority}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => editHabit(h)} className="w-10 h-10 rounded-full text-blue-500/40 flex items-center justify-center hover:bg-blue-500/10 hover:text-blue-500 transition-all group-hover:text-blue-500">
+                                                        <i className="ph-bold ph-pencil-simple text-lg"></i>
+                                                    </button>
+                                                    <button onClick={() => deleteHabit(h.id)} className="w-10 h-10 rounded-full text-red-500/40 flex items-center justify-center hover:bg-red-500/10 hover:text-red-500 transition-all group-hover:text-red-500">
+                                                        <i className="ph-bold ph-trash text-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        ))}
+                                        {habits.length === 0 && <div className="h-full flex items-center justify-center flex-col text-textMuted/40"><i className="ph ph-wind text-4xl mb-3"></i><p className="text-sm font-semibold">Empty vault</p></div>}
+                                    </ul>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const ObjectTabs = [
+                {id: 'today', icon: 'ph-calendar-check', label: 'Today'},
+                {id: 'focus', icon: 'ph-timer', label: 'Focus'},
+                {id: 'analytics', icon: 'ph-chart-line-up', label: 'Analytics'},
+                {id: 'journal', icon: 'ph-notebook', label: 'Journal'},
+                {id: 'review', icon: 'ph-star', label: 'Review'},
+                {id: 'settings', icon: 'ph-sliders-horizontal', label: 'Settings'}
+            ];
+
+            return (
+                <div className="flex flex-col md:flex-row h-screen bg-bg overflow-hidden text-textMain selection:bg-primary/20 transition-colors">
+					
+					{/* Navigation Sidebar / Bottom Bar */}
+					<nav className="fixed bottom-0 w-full z-50 md:relative md:w-64 md:h-screen bg-surface border-t md:border-t-0 md:border-r border-line flex-shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] md:shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+						<div className="flex md:flex-col h-full max-w-lg md:max-w-none mx-auto justify-between md:justify-start px-2 py-2 md:px-5 md:py-8 lg:px-6">
+							
+							{/* Branding */}
+							<div className="hidden md:flex items-center gap-3.5 mb-8 px-3">
+                                <div className="w-10 h-10 bg-textMain text-surface rounded-[14px] flex items-center justify-center shadow-md transform rotate-3 shrink-0">
+                                    <i className="ph-fill ph-leaf text-[22px]"></i>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-extrabold font-heading tracking-tight leading-[1.1] text-lg text-textMain">Serene<br/>Habit</span>
+                                </div>
+                            </div>
+
+                            {/* Gamification Level Box (Desktop only) */}
+                            <div className="hidden md:flex flex-col bg-input border border-line p-5 rounded-3xl mx-1 mb-6 shadow-sm relative overflow-hidden group cursor-pointer" onClick={() => {
+                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'I am growing stronger!', 'Rawr!'];
+                                alert(msgs[Math.floor(Math.random() * msgs.length)]);
+                            }}>
+                                <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-40 h-40 bg-primary/20 blur-3xl rounded-full z-0 pointer-events-none animate-pet-glow group-hover:bg-primary/30 transition-colors"></div>
+                                <div className="z-10 flex flex-col items-center mb-4 relative mt-2 text-center">
+                                    <div className="text-6xl animate-float drop-shadow-md mb-2">{getPetStage(currentLevel, petType).emoji}</div>
+                                    <h3 className="font-heading font-extrabold text-textMain mt-2 leading-tight">{getPetStage(currentLevel, petType).name}</h3>
+                                    <p className="text-[9px] uppercase font-extrabold text-textMuted tracking-wider mt-1 leading-snug">{getPetStage(currentLevel, petType).suffix}</p>
+                                </div>
+                                <div className="flex justify-between items-center mb-2 z-10 relative border-t border-line/50 pt-4 w-full">
+                                    <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest">Level {currentLevel}</span>
+                                    <span className="text-[10px] font-extrabold text-primary shrink-0">{totalXP} XP</span>
+                                </div>
+                                <div className="h-2 w-full bg-surface rounded-full overflow-hidden border border-line z-10 relative">
+                                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{width: `${progressPercent}%`}}></div>
+                                </div>
+                            </div>
+							
+							{/* Menu Links */}
+                            <div className="grid grid-cols-6 md:flex md:flex-col w-full px-1 md:px-0 gap-0 md:gap-2 z-10">
+                                {ObjectTabs.map(tab => (
+                                    <button 
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)} 
+                                        className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:flex-none py-2.5 md:py-4 px-0.5 md:px-4 lg:px-5 rounded-2xl md:rounded-2xl transition-all group ${activeTab===tab.id ? 'text-textMain bg-primary/10 shadow-[inset_0px_2px_4px_rgba(0,0,0,0.02)]' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
+                                    >
+                                        <div className="w-6 h-6 md:w-7 md:h-7 flex items-center justify-center md:mr-3.5 transition-transform group-hover:scale-110">
+                                            <i className={`text-[22px] md:text-[24px] ${tab.icon} ${activeTab===tab.id?'ph-fill text-primary':'ph'}`}></i>
+                                        </div>
+                                        <span className={`text-[9.5px] md:text-[14px] mt-1 md:mt-0 tracking-tight md:tracking-normal w-full overflow-hidden text-ellipsis ${activeTab===tab.id?'font-bold text-textMain':'font-semibold'}`}>{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+						</div>
+					</nav>
+					
+					{/* Main Dashboard Canvas - Properly Contained */}
+					<main className="flex-1 overflow-x-hidden overflow-y-auto pb-24 md:pb-0 scroll-smooth relative">
+                        <div className="absolute top-0 left-0 w-full h-[300px] bg-gradient-to-b from-primary/[0.04] to-transparent pointer-events-none z-0"></div>
+                        
+                        <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 md:px-12 lg:px-16 py-8 md:py-14 relative z-10">
+                            
+                            {/* Gamification Mobile Bar */}
+                            <div className="md:hidden w-full flex items-center justify-between mb-8">
+                                <span className="text-[10px] font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-full uppercase tracking-widest">Lvl {currentLevel} &bull; {totalXP} XP</span>
+                            </div>
+
+                            {activeTab === 'today' && <TodayView />}
+                            {activeTab === 'focus' && <FocusView />}
+                            {activeTab === 'analytics' && <AnalyticsView />}
+                            {activeTab === 'journal' && <JournalView />}
+                            {activeTab === 'review' && <ReviewView />}
+                            {activeTab === 'settings' && <SettingsView />}
+                        </div>
+                    </main>
+
+                    {activeAlarm && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6 animate-fade-in">
+                            <div className="bg-surface border border-line rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-fade-in">
+                                <div className="absolute -inset-10 bg-primary/20 blur-3xl rounded-full z-0 pointer-events-none animate-pulse"></div>
+                                
+                                <div className="w-20 h-20 bg-surface border border-line text-primary rounded-full flex items-center justify-center mb-6 shadow-md relative z-10">
+                                    <i className="ph-fill ph-bell-ringing text-4xl animate-bounce"></i>
+                                </div>
+                                <h2 className="text-3xl font-heading font-extrabold text-textMain mb-2 relative z-10">{activeAlarm.title}</h2>
+                                <p className="text-base font-semibold text-textMuted mb-10 relative z-10">{activeAlarm.body}</p>
+                                
+                                <div className="flex flex-col md:flex-row gap-4 w-full relative z-10">
+                                    <button onClick={handleSnoozeAlarm} className="flex-1 bg-input text-textMain py-4 rounded-xl font-extrabold hover:bg-line transition-all border border-line shadow-sm">
+                                        Snooze 5m
+                                    </button>
+                                    <button onClick={handleStopAlarm} className="flex-1 bg-primary text-white py-4 rounded-xl font-extrabold shadow-md hover:bg-primary/90 transition-all">
+                                        Stop Alarm
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+				</div>
+            )
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
