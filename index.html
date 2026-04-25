@@ -124,14 +124,19 @@
 
         /* SUPABASE CONFIGURATION */
         const getSupabaseConfig = () => {
-            // Priority 1: External config.js (Local Development)
-            if (window.SUPABASE_CONFIG?.URL && window.SUPABASE_CONFIG?.ANON_KEY) {
-                return window.SUPABASE_CONFIG;
+            // Priority 1: External config.js (window.SUPABASE_CONFIG)
+            // We check both the window object and a potentially delayed load
+            const globalConfig = window.SUPABASE_CONFIG;
+            if (globalConfig?.URL && globalConfig?.ANON_KEY) {
+                return globalConfig;
             }
-            // Priority 2: Local Storage (Production/GitHub Hosting)
+            // Priority 2: Local Storage
             const saved = localStorage.getItem('evolve_supabase_config');
             if (saved) {
-                try { return JSON.parse(saved); } catch(e) { return null; }
+                try { 
+                    const parsed = JSON.parse(saved);
+                    if (parsed.URL && parsed.ANON_KEY) return parsed;
+                } catch(e) { return null; }
             }
             return null;
         };
@@ -139,8 +144,11 @@
         const config = getSupabaseConfig();
         const SUPABASE_URL = config?.URL || '';
         const SUPABASE_ANON_KEY = config?.ANON_KEY || '';
-        const supabase = (window.supabase && SUPABASE_URL) 
-            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+        
+        // Ensure we use the correct global for Supabase v2
+        const supabaseClient = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+        const supabase = (supabaseClient && SUPABASE_URL && SUPABASE_ANON_KEY) 
+            ? supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
             : null;
 
         /* INITIAL DEMO DATA */
