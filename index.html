@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Serene Habit Tracker</title>
+    <title>Evolve Habit Tracker</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -117,11 +117,7 @@
         const { useState, useEffect, useRef, useMemo } = React;
 
         /* INITIAL DEMO DATA */
-        const DEMO_HABITS = [
-            { id: '1', name: 'Morning Meditation', description: 'At least 10 minutes session', priority: 'High', category: 'Health', reminderTime: '07:00', color: '#4A7C59', createdAt: new Date().toISOString() },
-            { id: '2', name: 'Deep Reading', description: 'Read 20 pages every night', priority: 'Medium', category: 'Learning', reminderTime: '20:00', color: '#457b9d', createdAt: new Date().toISOString() },
-            { id: '3', name: 'Inbox Zero', description: 'Clear out all work emails', priority: 'Low', category: 'Work', reminderTime: '17:00', color: '#e63946', createdAt: new Date().toISOString() }
-        ];
+        const DEMO_HABITS = [];
 
         /* PERSISTENCE HOOK */
         function useLocalStorage(key, initialValue) {
@@ -241,7 +237,7 @@
         };
 
         const App = () => {
-            const [isDarkMode, setIsDarkMode] = useLocalStorage('serene_theme', false);
+            const [isDarkMode, setIsDarkMode] = useLocalStorage('evolve_theme', false);
             
             useEffect(() => {
                 if(isDarkMode) {
@@ -251,14 +247,14 @@
                 }
             }, [isDarkMode]);
 
-            const [habits, setHabits] = useLocalStorage('serene_habits', DEMO_HABITS);
-            const [checkins, setCheckins] = useLocalStorage('serene_checkins', {}); 
-            const [moods, setMoods] = useLocalStorage('serene_moods', {}); 
-            const [notes, setNotes] = useLocalStorage('serene_notes', {}); 
-            const [customAudio, setCustomAudio] = useLocalStorage('serene_custom_audio', '');
-            const [petType, setPetType] = useLocalStorage('serene_pet_type', 'dragon');
+            const [habits, setHabits] = useLocalStorage('evolve_habits', DEMO_HABITS);
+            const [checkins, setCheckins] = useLocalStorage('evolve_checkins', {}); 
+            const [moods, setMoods] = useLocalStorage('evolve_moods', {}); 
+            const [notes, setNotes] = useLocalStorage('evolve_notes', {}); 
+            const [customAudio, setCustomAudio] = useLocalStorage('evolve_custom_audio', '');
+            const [petType, setPetType] = useLocalStorage('evolve_pet_type', 'dragon');
             
-            const [snoozedAlarms, setSnoozedAlarms] = useLocalStorage('serene_snoozed', []); 
+            const [snoozedAlarms, setSnoozedAlarms] = useLocalStorage('evolve_snoozed', []); 
             const [activeAlarm, setActiveAlarm] = useState(null); 
 
             const [activeTab, setActiveTab] = useState('today');
@@ -1071,7 +1067,7 @@
                                     <button onClick={() => {
                                         if(confirm('Warning: This deletes all data permanently. Are you sure?')) {
                                             setHabits([]); setCheckins({}); setMoods({}); setNotes({});
-                                            localStorage.removeItem('serene_theme');
+                                            localStorage.removeItem('evolve_theme');
                                         }
                                     }} className="bg-red-500/10 text-red-500 px-5 py-3 rounded-xl text-xs font-extrabold hover:bg-red-500/20 transition-colors shrink-0">Clear Data</button>
                                 </section>
@@ -1131,10 +1127,10 @@
 							{/* Branding */}
 							<div className="hidden md:flex items-center gap-3.5 mb-8 px-3">
                                 <div className="w-10 h-10 bg-textMain text-surface rounded-[14px] flex items-center justify-center shadow-md transform rotate-3 shrink-0">
-                                    <i className="ph-fill ph-leaf text-[22px]"></i>
+                                    <i className="ph-fill ph-lightning text-[22px]"></i>
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="font-extrabold font-heading tracking-tight leading-[1.1] text-lg text-textMain">Serene<br/>Habit</span>
+                                    <span className="font-extrabold font-heading tracking-tight leading-[1.1] text-lg text-textMain">Evolve<br/>Habit</span>
                                 </div>
                             </div>
 
