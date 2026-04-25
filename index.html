@@ -21,6 +21,9 @@
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -112,9 +115,33 @@
 </head>
 <body class="overflow-hidden">
     <div id="root"></div>
+    
+    <!-- External Configuration (Hidden from Git) -->
+    <script src="config.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
+
+        /* SUPABASE CONFIGURATION */
+        const getSupabaseConfig = () => {
+            // Priority 1: External config.js (Local Development)
+            if (window.SUPABASE_CONFIG?.URL && window.SUPABASE_CONFIG?.ANON_KEY) {
+                return window.SUPABASE_CONFIG;
+            }
+            // Priority 2: Local Storage (Production/GitHub Hosting)
+            const saved = localStorage.getItem('evolve_supabase_config');
+            if (saved) {
+                try { return JSON.parse(saved); } catch(e) { return null; }
+            }
+            return null;
+        };
+
+        const config = getSupabaseConfig();
+        const SUPABASE_URL = config?.URL || '';
+        const SUPABASE_ANON_KEY = config?.ANON_KEY || '';
+        const supabase = (window.supabase && SUPABASE_URL) 
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+            : null;
 
         /* INITIAL DEMO DATA */
         const DEMO_HABITS = [];
@@ -236,6 +263,118 @@
             return current;
         };
 
+        const AuthView = ({ supabase }) => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError(null);
+                
+                try {
+                    let result;
+                    if (isLogin) {
+                        result = await supabase.auth.signInWithPassword({ email, password });
+                    } else {
+                        result = await supabase.auth.signUp({ email, password });
+                    }
+
+                    if (result.error) throw result.error;
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[300] bg-surface flex flex-col md:flex-row h-full overflow-hidden text-textMain">
+                    {/* Visual Side */}
+                    <div className="hidden md:flex flex-1 bg-primary relative items-center justify-center p-20 overflow-hidden">
+                        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-white/10 blur-[120px] rounded-full animate-pulse"></div>
+                        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-black/20 blur-[100px] rounded-full"></div>
+                        
+                        <div className="relative z-10 text-white max-w-lg">
+                            <div className="w-20 h-20 bg-white/10 backdrop-blur-xl border border-white/20 rounded-[28px] flex items-center justify-center mb-10 shadow-2xl transform rotate-6">
+                                <i className="ph-fill ph-lightning text-5xl"></i>
+                            </div>
+                            <h1 className="text-6xl font-heading font-extrabold mb-6 tracking-tight leading-tight">Evolve Your Daily Routine.</h1>
+                            <p className="text-xl font-medium text-white/80 leading-relaxed">Join thousands tracking their path to mastery. Simple, powerful, and private.</p>
+                        </div>
+                    </div>
+
+                    {/* Form Side */}
+                    <div className="flex-1 flex items-center justify-center p-8 md:p-16 overflow-y-auto">
+                        <div className="max-w-md w-full">
+                            <div className="md:hidden flex items-center justify-center mb-12">
+                                <div className="w-14 h-14 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg">
+                                    <i className="ph-fill ph-lightning text-3xl"></i>
+                                </div>
+                            </div>
+
+                            <h2 className="text-4xl font-heading font-extrabold text-textMain mb-2">{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+                            <p className="text-textMuted font-semibold mb-10">{isLogin ? 'Enter your details to resume your progress.' : 'Start your journey with a new account.'}</p>
+
+                            <form onSubmit={handleAuth} className="space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-bold uppercase tracking-widest text-textMuted ml-1">Email Address</label>
+                                    <input 
+                                        type="email" 
+                                        required
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        placeholder="name@example.com"
+                                        className="w-full bg-input border border-line rounded-2xl px-5 py-4 text-sm font-semibold text-textMain focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-bold uppercase tracking-widest text-textMuted ml-1">Password</label>
+                                    <input 
+                                        type="password" 
+                                        required
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        className="w-full bg-input border border-line rounded-2xl px-5 py-4 text-sm font-semibold text-textMain focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                    />
+                                </div>
+
+                                {error && (
+                                    <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-xl text-xs font-bold animate-shake">
+                                        {error}
+                                    </div>
+                                )}
+
+                                <button 
+                                    disabled={loading}
+                                    className="w-full bg-primary text-white py-5 rounded-2xl font-extrabold shadow-xl hover:bg-primary/90 transition-all flex items-center justify-center gap-3 disabled:opacity-70"
+                                >
+                                    {loading && <i className="ph ph-spinner animate-spin text-xl"></i>}
+                                    {isLogin ? 'Sign In to Evolve' : 'Create My Account'}
+                                </button>
+                            </form>
+
+                            <div className="mt-10 pt-8 border-t border-line text-center">
+                                <p className="text-sm font-semibold text-textMuted">
+                                    {isLogin ? "Don't have an account?" : "Already have an account?"}
+                                    <button 
+                                        onClick={() => setIsLogin(!isLogin)}
+                                        className="text-primary font-bold ml-2 hover:underline"
+                                    >
+                                        {isLogin ? 'Sign Up' : 'Log In'}
+                                    </button>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const App = () => {
             const [isDarkMode, setIsDarkMode] = useLocalStorage('evolve_theme', false);
             
@@ -247,17 +386,97 @@
                 }
             }, [isDarkMode]);
 
-            const [habits, setHabits] = useLocalStorage('evolve_habits', DEMO_HABITS);
-            const [checkins, setCheckins] = useLocalStorage('evolve_checkins', {}); 
-            const [moods, setMoods] = useLocalStorage('evolve_moods', {}); 
-            const [notes, setNotes] = useLocalStorage('evolve_notes', {}); 
-            const [customAudio, setCustomAudio] = useLocalStorage('evolve_custom_audio', '');
-            const [petType, setPetType] = useLocalStorage('evolve_pet_type', 'dragon');
+            const [habits, setHabits] = useState(DEMO_HABITS);
+            const [checkins, setCheckins] = useState({}); 
+            const [moods, setMoods] = useState({}); 
+            const [notes, setNotes] = useState({}); 
+            const [customAudio, setCustomAudio] = useState('');
+            const [petType, setPetType] = useState('dragon');
             
-            const [snoozedAlarms, setSnoozedAlarms] = useLocalStorage('evolve_snoozed', []); 
+            const [snoozedAlarms, setSnoozedAlarms] = useState([]); 
             const [activeAlarm, setActiveAlarm] = useState(null); 
 
             const [activeTab, setActiveTab] = useState('today');
+            const [showDbSetup, setShowDbSetup] = useState(!supabase);
+            const [user, setUser] = useState(null);
+            const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+            // AUTH LISTENER
+            useEffect(() => {
+                if (!supabase) {
+                    setIsAuthLoading(false);
+                    return;
+                }
+
+                // Check active session
+                supabase.auth.getSession().then(({ data: { session } }) => {
+                    setUser(session?.user ?? null);
+                    setIsAuthLoading(false);
+                });
+
+                // Listen for changes
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                    setUser(session?.user ?? null);
+                });
+
+                return () => subscription.unsubscribe();
+            }, []);
+
+            const handleSaveConfig = (url, key) => {
+                localStorage.setItem('evolve_supabase_config', JSON.stringify({ URL: url, ANON_KEY: key }));
+                window.location.reload();
+            };
+
+            const handleSignOut = async () => {
+                await supabase.auth.signOut();
+                window.location.reload();
+            };
+
+            // SUPABASE DATA FETCHING
+            useEffect(() => {
+                async function fetchSupabaseData() {
+                    if (!supabase || !user) return; 
+                    
+                    // 1. Settings
+                    const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
+                    if (settings) {
+                        if (settings.pet_type) setPetType(settings.pet_type);
+                        if (settings.custom_audio) setCustomAudio(settings.custom_audio);
+                    } else {
+                        // Initialize settings for new user
+                        await supabase.from('user_settings').insert([{ user_id: user.id, pet_type: 'dragon', custom_audio: '' }]);
+                    }
+
+                    // 2. Habits
+                    const { data: hData } = await supabase.from('habits').select('*').eq('user_id', user.id);
+                    if (hData) setHabits(hData);
+
+                    // 3. Checkins
+                    const { data: checkinsData } = await supabase.from('habit_checkins').select('*').eq('user_id', user.id);
+                    if (checkinsData) {
+                        const checkinsMap = {};
+                        checkinsData.forEach(c => {
+                            if (!checkinsMap[c.date]) checkinsMap[c.date] = {};
+                            checkinsMap[c.date][c.habit_id] = c.status;
+                        });
+                        setCheckins(checkinsMap);
+                    }
+
+                    // 4. Daily Logs
+                    const { data: logsData } = await supabase.from('daily_logs').select('*').eq('user_id', user.id);
+                    if (logsData) {
+                        const moodsMap = {};
+                        const notesMap = {};
+                        logsData.forEach(log => {
+                            if (log.mood) moodsMap[log.date] = log.mood;
+                            if (log.note) notesMap[log.date] = log.note;
+                        });
+                        setMoods(moodsMap);
+                        setNotes(notesMap);
+                    }
+                }
+                fetchSupabaseData();
+            }, [user]);
 
             const triggerAlarm = (title, body, audioUrl) => {
                 if ("Notification" in window && Notification.permission === "granted") {
@@ -368,17 +587,27 @@
                 return { current, best };
             };
 
-            const toggleCheckin = (habitId, status) => {
+            const toggleCheckin = async (habitId, status) => {
+                let isDelete = false;
                 setCheckins(prev => {
                     const next = { ...prev };
                     if (!next[todayStr]) next[todayStr] = {};
                     if (next[todayStr][habitId] === status) {
                         delete next[todayStr][habitId];
+                        isDelete = true;
                     } else {
                         next[todayStr][habitId] = status;
                     }
                     return next;
                 });
+
+                if (supabase && user) {
+                    if (isDelete) {
+                        await supabase.from('habit_checkins').delete().match({ date: todayStr, habit_id: habitId, user_id: user.id });
+                    } else {
+                        await supabase.from('habit_checkins').upsert({ date: todayStr, habit_id: habitId, status: status, user_id: user.id });
+                    }
+                }
             };
 
             /* Gamification logic */
@@ -409,13 +638,14 @@
                     setSaveStatus('Unsaved');
                 };
 
-                const handleNoteBlur = () => {
+                const handleNoteBlur = async () => {
                     if (localNote !== todayNote) {
                         setSaveStatus('Saving...');
-                        setTimeout(() => {
-                            setNotes(prev => ({...prev, [todayStr]: localNote}));
-                            setSaveStatus('Saved');
-                        }, 400); 
+                        setNotes(prev => ({...prev, [todayStr]: localNote}));
+                        if (supabase && user) {
+                            await supabase.from('daily_logs').upsert({ date: todayStr, note: localNote, user_id: user.id });
+                        }
+                        setSaveStatus('Saved');
                     }
                 };
 
@@ -468,7 +698,10 @@
                                             {[{val:1, icon:'😞'}, {val:2, icon:'😐'}, {val:3, icon:'🙂'}, {val:4, icon:'😊'}, {val:5, icon:'🤩'}].map(m => (
                                                 <button 
                                                     key={m.val}
-                                                    onClick={() => setMoods(prev => ({...prev, [todayStr]: m.val}))}
+                                                    onClick={async () => {
+                                                        setMoods(prev => ({...prev, [todayStr]: m.val}));
+                                                        if (supabase && user) await supabase.from('daily_logs').upsert({ date: todayStr, mood: m.val, user_id: user.id });
+                                                    }}
                                                     className={`aspect-square w-12 sm:w-14 rounded-2xl text-[24px] sm:text-[28px] flex items-center justify-center transition-all ${todayMood === m.val ? 'bg-primary/10 border border-primary/30 scale-110 saturate-[1.25] shadow-sm relative dark:after:content-[\'\'] dark:after:absolute dark:after:inset-0 dark:after:rounded-2xl dark:after:shadow-[0_0_15px_var(--color-primary)] dark:after:z-[-1]' : 'bg-input border border-transparent grayscale hover:grayscale-0 hover:bg-line'}`}
                                                 >
                                                     {m.icon}
@@ -885,22 +1118,33 @@
                 const [editingId, setEditingId] = useState(null);
                 const [form, setForm] = useState({ name: '', description: '', priority: 'Medium', category: 'Health', reminderTime: '08:00', color: '#4A7C59' });
                 
-                const handleAdd = (e) => {
+                const handleAdd = async (e) => {
                     e.preventDefault();
                     if (!form.name.trim()) return;
                     if (editingId) {
-                        setHabits(habits.map(h => h.id === editingId ? { ...h, ...form } : h));
+                        const updatedHabits = habits.map(h => h.id === editingId ? { ...h, ...form } : h);
+                        setHabits(updatedHabits);
+                        if (supabase && user) {
+                            await supabase.from('habits').update({ name: form.name, description: form.description, priority: form.priority, category: form.category, reminderTime: form.reminderTime, color: form.color }).eq('id', editingId).eq('user_id', user.id);
+                        }
                         setEditingId(null);
                     } else {
-                        setHabits([...habits, { ...form, id: Date.now().toString(), createdAt: new Date().toISOString() }]);
+                        const newHabit = { ...form, id: Date.now().toString(), createdAt: new Date().toISOString() };
+                        setHabits([...habits, newHabit]);
+                        if (supabase && user) {
+                            await supabase.from('habits').insert([{ ...newHabit, user_id: user.id }]);
+                        }
                     }
                     setIsAdding(false);
                     setForm({ name: '', description: '', priority: 'Medium', category: 'Health', reminderTime: '08:00', color: '#4A7C59' });
                 };
 
-                const deleteHabit = (id) => {
+                const deleteHabit = async (id) => {
                     if(confirm('Are you strictly sure you want to permanently delete this habit?')) {
                         setHabits(habits.filter(h => h.id !== id));
+                        if (supabase && user) {
+                            await supabase.from('habits').delete().eq('id', id).eq('user_id', user.id);
+                        }
                     }
                 };
 
@@ -928,7 +1172,10 @@
                                 
                                 {/* Appearance Toggle */}
                                 <section className="bg-surface p-7 md:p-8 rounded-3xl shadow-sm border border-line flex flex-col gap-2">
-                                    <h2 className="font-heading font-extrabold text-xl pb-2">Preferences</h2>
+                                    <div className="flex items-center justify-between pb-2">
+                                        <h2 className="font-heading font-extrabold text-xl">Preferences</h2>
+                                        <button onClick={handleSignOut} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-xs font-extrabold hover:bg-primary/20 transition-colors">Sign Out</button>
+                                    </div>
                                     <div className="flex items-center justify-between mt-2 border-b border-line pb-6">
                                         <div className="flex items-center gap-3">
                                             <i className="ph-fill ph-moon text-xl text-textMuted"></i>
@@ -951,7 +1198,10 @@
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {customAudio && (
-                                                <button onClick={() => setCustomAudio('')} className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors" title="Remove custom sound">
+                                                <button onClick={async () => {
+                                                    setCustomAudio('');
+                                                    if (supabase && user) await supabase.from('user_settings').upsert({ id: 1, custom_audio: '', user_id: user.id });
+                                                }} className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors" title="Remove custom sound">
                                                     <i className="ph-bold ph-trash"></i>
                                                 </button>
                                             )}
@@ -964,7 +1214,11 @@
                                                             return;
                                                         }
                                                         const reader = new FileReader();
-                                                        reader.onload = (ev) => setCustomAudio(ev.target.result);
+                                                        reader.onload = async (ev) => {
+                                                            const base64Audio = ev.target.result;
+                                                            setCustomAudio(base64Audio);
+                                                            if (supabase && user) await supabase.from('user_settings').upsert({ id: 1, custom_audio: base64Audio, user_id: user.id });
+                                                        };
                                                         reader.readAsDataURL(file);
                                                     }
                                                 }} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
@@ -984,7 +1238,11 @@
                                         </div>
                                         <select 
                                             value={petType} 
-                                            onChange={e => setPetType(e.target.value)}
+                                            onChange={async e => {
+                                                const val = e.target.value;
+                                                setPetType(val);
+                                                if (supabase && user) await supabase.from('user_settings').upsert({ id: 1, pet_type: val, user_id: user.id });
+                                            }}
                                             className="bg-input border border-line text-textMain px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-primary cursor-pointer shadow-sm"
                                         >
                                             <option value="dragon">🐉 Dragon</option>
@@ -1117,6 +1375,18 @@
                 {id: 'settings', icon: 'ph-sliders-horizontal', label: 'Settings'}
             ];
 
+            if (isAuthLoading) {
+                return (
+                    <div className="fixed inset-0 bg-surface flex items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    </div>
+                );
+            }
+
+            if (!user && supabase) {
+                return <AuthView supabase={supabase} />;
+            }
+
             return (
                 <div className="flex flex-col md:flex-row h-screen bg-bg overflow-hidden text-textMain selection:bg-primary/20 transition-colors">
 					
@@ -1192,6 +1462,61 @@
                         </div>
                     </main>
 
+                    {showDbSetup && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-surface/80 backdrop-blur-md px-6 animate-fade-in">
+                            <div className="bg-surface border border-line rounded-[32px] p-8 md:p-10 max-w-md w-full shadow-2xl flex flex-col items-center relative overflow-hidden">
+                                <div className="absolute -top-24 -left-24 w-64 h-64 bg-primary/10 blur-3xl rounded-full z-0"></div>
+                                
+                                <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-6 relative z-10">
+                                    <i className="ph-fill ph-database text-3xl"></i>
+                                </div>
+                                
+                                <h2 className="text-2xl font-heading font-extrabold text-textMain mb-2 text-center relative z-10">Connect Database</h2>
+                                <p className="text-sm font-semibold text-textMuted mb-8 text-center relative z-10 leading-relaxed">
+                                    To sync your habits across devices, enter your Supabase credentials below. This is only needed once.
+                                </p>
+                                
+                                <div className="w-full space-y-4 relative z-10">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest text-textMuted ml-1">Supabase URL</label>
+                                        <input 
+                                            id="setup_url"
+                                            placeholder="https://xyz.supabase.co" 
+                                            className="bg-input border border-line rounded-xl px-4 py-3 text-sm font-semibold text-textMain focus:outline-none focus:border-primary transition-all shadow-sm"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest text-textMuted ml-1">Anon API Key</label>
+                                        <input 
+                                            id="setup_key"
+                                            type="password"
+                                            placeholder="eyJhbGciOiJIUzI..." 
+                                            className="bg-input border border-line rounded-xl px-4 py-3 text-sm font-semibold text-textMain focus:outline-none focus:border-primary transition-all shadow-sm"
+                                        />
+                                    </div>
+                                    
+                                    <button 
+                                        onClick={() => {
+                                            const url = document.getElementById('setup_url').value;
+                                            const key = document.getElementById('setup_key').value;
+                                            if (url && key) handleSaveConfig(url, key);
+                                        }}
+                                        className="w-full bg-primary text-white py-4 rounded-2xl font-extrabold shadow-lg hover:bg-primary/90 transition-all mt-4"
+                                    >
+                                        Connect & Initialize
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => setShowDbSetup(false)}
+                                        className="w-full text-textMuted py-2 text-[11px] font-bold uppercase tracking-widest hover:text-textMain transition-colors mt-2"
+                                    >
+                                        Continue Offline (Local Only)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {activeAlarm && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6 animate-fade-in">
                             <div className="bg-surface border border-line rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-fade-in">
@@ -1214,8 +1539,8 @@
                             </div>
                         </div>
                     )}
-				</div>
-            )
+                </div>
+            );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
