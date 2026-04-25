@@ -125,7 +125,6 @@
         /* SUPABASE CONFIGURATION */
         const getSupabaseConfig = () => {
             // Priority 1: External config.js (window.SUPABASE_CONFIG)
-            // We check both the window object and a potentially delayed load
             const globalConfig = window.SUPABASE_CONFIG;
             if (globalConfig?.URL && globalConfig?.ANON_KEY) {
                 return globalConfig;
@@ -141,15 +140,12 @@
             return null;
         };
 
-        const config = getSupabaseConfig();
-        const SUPABASE_URL = config?.URL || '';
-        const SUPABASE_ANON_KEY = config?.ANON_KEY || '';
-        
-        // Ensure we use the correct global for Supabase v2
-        const supabaseClient = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
-        const supabase = (supabaseClient && SUPABASE_URL && SUPABASE_ANON_KEY) 
-            ? supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
-            : null;
+        // We'll define a helper to create the client
+        const createSupabaseClient = (cfg) => {
+            if (!cfg?.URL || !cfg?.ANON_KEY) return null;
+            const client = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+            return client ? client.createClient(cfg.URL, cfg.ANON_KEY) : null;
+        };
 
         /* INITIAL DEMO DATA */
         const DEMO_HABITS = [];
@@ -405,9 +401,24 @@
             const [activeAlarm, setActiveAlarm] = useState(null); 
 
             const [activeTab, setActiveTab] = useState('today');
-            const [showDbSetup, setShowDbSetup] = useState(!supabase);
+            
+            // Dynamic Supabase Initialization to prevent race conditions
+            const [supabase, setSupabase] = useState(() => createSupabaseClient(getSupabaseConfig()));
+            const [showDbSetup, setShowDbSetup] = useState(false);
             const [user, setUser] = useState(null);
             const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+            // Re-check for config on mount (handles slow config.js loading)
+            useEffect(() => {
+                if (!supabase) {
+                    const cfg = getSupabaseConfig();
+                    if (cfg) {
+                        setSupabase(createSupabaseClient(cfg));
+                    } else {
+                        setShowDbSetup(true);
+                    }
+                }
+            }, []);
 
             // AUTH LISTENER
             useEffect(() => {
@@ -427,8 +438,8 @@
                     setUser(session?.user ?? null);
                 });
 
-                return () => subscription.unsubscribe();
-            }, []);
+                return () => subscription?.unsubscribe();
+            }, [supabase]);
 
             const handleSaveConfig = (url, key) => {
                 localStorage.setItem('evolve_supabase_config', JSON.stringify({ URL: url, ANON_KEY: key }));
@@ -484,7 +495,7 @@
                     }
                 }
                 fetchSupabaseData();
-            }, [user]);
+            }, [supabase, user]);
 
             const triggerAlarm = (title, body, audioUrl) => {
                 if ("Notification" in window && Notification.permission === "granted") {
