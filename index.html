@@ -117,7 +117,7 @@
     <div id="root"></div>
     
     <!-- External Configuration (Hidden from Git) -->
-    <script src="config.js"></script>
+    <script src="./config.js" onerror="console.error('CRITICAL: config.js not found! Please ensure it exists in the same folder as index.html')"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
@@ -408,16 +408,35 @@
             const [user, setUser] = useState(null);
             const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-            // Re-check for config on mount (handles slow config.js loading)
+            // Re-check for config on mount with a small delay to handle slow local file loading
             useEffect(() => {
-                if (!supabase) {
+                let retries = 0;
+                const checkConfig = () => {
                     const cfg = getSupabaseConfig();
                     if (cfg) {
-                        setSupabase(createSupabaseClient(cfg));
-                    } else {
-                        setShowDbSetup(true);
+                        const client = createSupabaseClient(cfg);
+                        if (client) {
+                            setSupabase(client);
+                            setShowDbSetup(false);
+                            return true;
+                        }
                     }
-                }
+                    return false;
+                };
+
+                // Check immediately
+                if (checkConfig()) return;
+
+                // Otherwise, poll every 100ms for 2 seconds
+                const interval = setInterval(() => {
+                    retries++;
+                    if (checkConfig() || retries > 20) {
+                        if (!getSupabaseConfig()) setShowDbSetup(true);
+                        clearInterval(interval);
+                    }
+                }, 100);
+
+                return () => clearInterval(interval);
             }, []);
 
             // AUTH LISTENER
