@@ -549,24 +549,27 @@
                     
                     try {
                         const [
-                            { data: settings },
+                            { data: settingsData },
                             { data: hData },
                             { data: checkinsData },
                             { data: logsData }
                         ] = await Promise.all([
-                            supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
+                            supabase.from('user_settings').select('*').eq('user_id', user.id).order('id', { ascending: false }),
                             supabase.from('habits').select('*').eq('user_id', user.id),
                             supabase.from('habit_checkins').select('*').eq('user_id', user.id),
                             supabase.from('daily_logs').select('*').eq('user_id', user.id)
                         ]);
 
+                        console.log("Settings fetched:", settingsData);
+
+                        const settings = settingsData && settingsData.length > 0 ? settingsData[0] : null;
+
                         if (settings) {
-                            if (settings.pet_type) setPetType(settings.pet_type);
-                            if (settings.custom_audio) setCustomAudio(settings.custom_audio);
-                            if (settings.group_code) setGroupCode(settings.group_code);
-                            if (settings.nickname) setNickname(settings.nickname);
+                            setGroupCode(settings.group_code || '');
+                            setNickname(settings.nickname || '');
                         } else {
-                            await supabase.from('user_settings').insert([{ user_id: user.id, pet_type: 'dragon', custom_audio: '', group_code: '', nickname: '' }]);
+                            console.log("No settings found, creating default row...");
+                            await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, group_code: '', nickname: '' }]);
                         }
 
                         if (hData) setHabits(hData);
@@ -789,11 +792,11 @@
                                 <div className="absolute -inset-10 bg-primary/5 blur-2xl rounded-full z-0 pointer-events-none animate-pet-glow"></div>
                                 <div className="flex items-center justify-between mb-4 w-full">
                                     <div className="flex flex-col z-10 relative">
-                                        <h3 className="text-xl font-heading font-extrabold text-textMain">{getPetStage(currentLevel, petType).name}</h3>
-                                        <p className="text-[11px] font-bold text-textMuted uppercase tracking-widest mt-1">Level {currentLevel} • {getPetStage(currentLevel, petType).suffix}</p>
+                                        <h3 className="text-xl font-heading font-extrabold text-textMain">Gamification</h3>
+                                        <p className="text-[11px] font-bold text-textMuted uppercase tracking-widest mt-1">Level {currentLevel}</p>
                                     </div>
-                                    <div className="text-5xl animate-float z-10 relative drop-shadow-[0_10px_10px_rgba(0,0,0,0.15)]">
-                                        {getPetStage(currentLevel, petType).emoji}
+                                    <div className="text-3xl text-primary z-10 relative drop-shadow-[0_10px_10px_rgba(0,0,0,0.15)]">
+                                        <i className="ph-fill ph-trophy"></i>
                                     </div>
                                 </div>
                                 <div className="w-full z-10 relative flex flex-col gap-1.5 pt-2 border-t border-line/50">
@@ -1271,7 +1274,8 @@
                     
                     if (supabase && user) {
                         try {
-                            await supabase.from('user_settings').update({ group_code: newCode }).eq('user_id', user.id);
+                            const { data } = await supabase.from('user_settings').update({ group_code: newCode }).eq('user_id', user.id).select();
+                            if (!data || data.length === 0) await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, group_code: newCode }]);
                         } catch(err) { console.log(err); }
                     }
                     setIsJoining(false);
@@ -1280,14 +1284,15 @@
                 const handleCreate = async () => {
                     setIsJoining(true);
                     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-                    let newCode = 'SOLO-';
-                    for (let i = 0; i < 4; i++) newCode += chars.charAt(Math.floor(Math.random() * chars.length));
+                    let newCode = '';
+                    for (let i = 0; i < 6; i++) newCode += chars.charAt(Math.floor(Math.random() * chars.length));
                     
                     setGroupCode(newCode);
                     
                     if (supabase && user) {
                         try {
-                            await supabase.from('user_settings').update({ group_code: newCode }).eq('user_id', user.id);
+                            const { data } = await supabase.from('user_settings').update({ group_code: newCode }).eq('user_id', user.id).select();
+                            if (!data || data.length === 0) await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, group_code: newCode }]);
                         } catch(err) { console.log(err); }
                     }
                     setIsJoining(false);
@@ -1297,7 +1302,10 @@
                     if(confirm("Leave this group? You can always rejoin with the code.")) {
                         setGroupCode('');
                         if (supabase && user) {
-                            try { await supabase.from('user_settings').update({ group_code: '' }).eq('user_id', user.id); } catch(err) {}
+                            try { 
+                                const { data } = await supabase.from('user_settings').update({ group_code: '' }).eq('user_id', user.id).select(); 
+                                if (!data || data.length === 0) await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, group_code: '' }]);
+                            } catch(err) {}
                         }
                     }
                 };
@@ -1320,12 +1328,12 @@
                                         <div className="w-12 h-12 bg-green-500/10 text-green-600 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                                             <i className="ph-bold ph-plus text-xl"></i>
                                         </div>
-                                        <h2 className="text-xl font-heading font-extrabold text-textMain mb-2">Personal Space</h2>
-                                        <p className="text-sm font-semibold text-textMuted mb-8">Start a private, solo leaderboard to track your own statistics cleanly.</p>
+                                        <h2 className="text-xl font-heading font-extrabold text-textMain mb-2">Create a Squad</h2>
+                                        <p className="text-sm font-semibold text-textMuted mb-8">Start a new crew and get a unique 6-character code to share.</p>
                                     </div>
                                     <button disabled={isJoining} onClick={handleCreate} className="w-full bg-input text-textMain py-3.5 rounded-2xl text-sm font-extrabold hover:bg-primary hover:text-white transition-all disabled:opacity-70 flex justify-center items-center gap-2">
                                         {isJoining ? <i className="ph ph-spinner animate-spin text-lg"></i> : <i className="ph-bold ph-magic-wand text-lg"></i>}
-                                        Create Solo Space
+                                        Create New Squad
                                     </button>
                                 </div>
 
@@ -1358,36 +1366,9 @@
                     );
                 }
 
-                // Generates deterministic friends
+                // Social members logic
                 const generateMockFriends = (code) => {
-                    let hash = 0;
-                    for (let i = 0; i < code.length; i++) hash = code.charCodeAt(i) + ((hash << 5) - hash);
-                    const absHash = Math.abs(hash);
-                    
-                    const names = ['alex', 'jordan', 'taylor', 'casey', 'morgan', 'sam', 'riley', 'jamie', 'quinn', 'avery'];
                     const friends = [];
-                    
-                    if (!code.startsWith('SOLO-')) {
-                        for(let i=0; i<4; i++) {
-                            const seed = absHash + i * 999;
-                            const name = names[seed % names.length];
-                            const lvl = Math.max(1, currentLevel + ((seed % 7) - 3)); 
-                            const xp = Math.pow(lvl - 1, 2) * 50 + (seed % 100);
-                            const streak = seed % 15;
-                            const types = ['dragon', 'flora', 'avian', 'cosmic', 'cat', 'dog', 'butterfly'];
-                            const type = types[seed % types.length];
-                            
-                            friends.push({
-                                id: `mock-${i}`,
-                                username: `${name.charAt(0).toUpperCase() + name.slice(1)}${Math.floor((seed % 90) + 10)}`,
-                                level: lvl,
-                                xp: xp,
-                                streak: streak,
-                                petEmoji: getPetStage(lvl, type).emoji,
-                                isMe: false
-                            });
-                        }
-                    }
                     
                     friends.push({
                         id: user?.id || 'me',
@@ -1395,7 +1376,6 @@
                         level: currentLevel,
                         xp: totalXP,
                         streak: globalBestStreak,
-                        petEmoji: getPetStage(currentLevel, petType).emoji,
                         isMe: true
                     });
                     
@@ -1454,7 +1434,9 @@
                                                 </div>
                                                 
                                                 <div className="col-span-6 md:col-span-5 flex items-center gap-4 overflow-hidden">
-                                                    <div className="text-4xl drop-shadow-sm group-hover:scale-110 transition-transform">{member.petEmoji}</div>
+                                                    <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0 border border-primary/20">
+                                                        {member.username.charAt(0).toUpperCase()}
+                                                    </div>
                                                     <div className="flex flex-col min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <span className={`font-extrabold text-base truncate ${member.isMe ? 'text-primary' : 'text-textMain'}`}>{member.username}</span>
@@ -1567,12 +1549,11 @@
                                                     if (supabase && user) {
                                                         const { data, error } = await supabase.from('user_settings').update({ nickname: newNick }).eq('user_id', user.id).select();
                                                         if (error) {
-                                                            alert("Failed to update nickname: " + error.message + "\n\nPlease check your Supabase Row Level Security (RLS) policies.");
+                                                            alert("Failed to update nickname: " + error.message);
                                                         } else if (!data || data.length === 0) {
-                                                            // If no row was updated, it means the user's settings row doesn't exist yet! We must insert it.
-                                                            const { error: insertErr } = await supabase.from('user_settings').insert([{ user_id: user.id, nickname: newNick }]);
+                                                            const { error: insertErr } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, nickname: newNick }]);
                                                             if (insertErr) {
-                                                                alert("Failed to insert new nickname row: " + insertErr.message + "\n\nPlease check your Supabase Row Level Security (RLS) policies.");
+                                                                alert("Failed to insert nickname: " + insertErr.message);
                                                             }
                                                         }
                                                     }
@@ -1616,7 +1597,13 @@
                                             {customAudio && (
                                                 <button onClick={async () => {
                                                     setCustomAudio('');
-                                                    if (supabase && user) await supabase.from('user_settings').update({ custom_audio: '' }).eq('user_id', user.id);
+                                                    if (supabase && user) {
+                                                        const { data } = await supabase.from('user_settings').update({ custom_audio: '' }).eq('user_id', user.id).select();
+                                                        if (!data || data.length === 0) {
+                                                            const { error } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, custom_audio: '' }]);
+                                                            if (error) alert("Failed to clear audio: " + error.message);
+                                                        }
+                                                    }
                                                 }} className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors" title="Remove custom sound">
                                                     <i className="ph-bold ph-trash"></i>
                                                 </button>
@@ -1633,7 +1620,13 @@
                                                         reader.onload = async (ev) => {
                                                             const base64Audio = ev.target.result;
                                                             setCustomAudio(base64Audio);
-                                                            if (supabase && user) await supabase.from('user_settings').update({ custom_audio: base64Audio }).eq('user_id', user.id);
+                                                            if (supabase && user) {
+                                                                const { data } = await supabase.from('user_settings').update({ custom_audio: base64Audio }).eq('user_id', user.id).select();
+                                                                if (!data || data.length === 0) {
+                                                                    const { error } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, custom_audio: base64Audio }]);
+                                                                    if (error) alert("Failed to save audio: " + error.message);
+                                                                }
+                                                            }
                                                         };
                                                         reader.readAsDataURL(file);
                                                     }
@@ -1644,32 +1637,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center justify-between pt-4 border-t border-line mt-4">
-                                        <div className="flex items-center gap-3">
-                                            <i className="ph-fill ph-cat text-xl text-textMuted"></i>
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-textMain text-sm">Companion Type</span>
-                                                <span className="text-[10px] uppercase font-bold tracking-widest text-textMuted mt-0.5">Evolves with level</span>
-                                            </div>
-                                        </div>
-                                        <select 
-                                            value={petType} 
-                                            onChange={async e => {
-                                                const val = e.target.value;
-                                                setPetType(val);
-                                                if (supabase && user) await supabase.from('user_settings').update({ pet_type: val }).eq('user_id', user.id);
-                                            }}
-                                            className="bg-input border border-line text-textMain px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-primary cursor-pointer shadow-sm"
-                                        >
-                                            <option value="dragon">🐉 Dragon</option>
-                                            <option value="flora">🌺 Flora</option>
-                                            <option value="avian">🦚 Avian</option>
-                                            <option value="cosmic">🌌 Cosmic</option>
-                                            <option value="cat">🐈 Cat</option>
-                                            <option value="dog">🐕 Dog</option>
-                                            <option value="butterfly">🦋 Butterfly</option>
-                                        </select>
-                                    </div>
+
                                 </section>
 
                                 {/* Account Security */}
@@ -1851,16 +1819,11 @@
 
                             {/* Gamification Level Box (Desktop only) */}
                             <div className="hidden md:flex flex-col bg-input border border-line p-5 rounded-3xl mx-1 mb-6 shadow-sm relative overflow-hidden group cursor-pointer" onClick={() => {
-                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'I am growing stronger!', 'Rawr!'];
+                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'Leveling up!', 'Keep it up!'];
                                 alert(msgs[Math.floor(Math.random() * msgs.length)]);
                             }}>
-                                <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-40 h-40 bg-primary/20 blur-3xl rounded-full z-0 pointer-events-none animate-pet-glow group-hover:bg-primary/30 transition-colors"></div>
-                                <div className="z-10 flex flex-col items-center mb-4 relative mt-2 text-center">
-                                    <div className="text-6xl animate-float drop-shadow-md mb-2">{getPetStage(currentLevel, petType).emoji}</div>
-                                    <h3 className="font-heading font-extrabold text-textMain mt-2 leading-tight">{getPetStage(currentLevel, petType).name}</h3>
-                                    <p className="text-[9px] uppercase font-extrabold text-textMuted tracking-wider mt-1 leading-snug">{getPetStage(currentLevel, petType).suffix}</p>
-                                </div>
-                                <div className="flex justify-between items-center mb-2 z-10 relative border-t border-line/50 pt-4 w-full">
+                                <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-40 h-40 bg-primary/20 blur-3xl rounded-full z-0 pointer-events-none group-hover:bg-primary/30 transition-colors"></div>
+                                <div className="flex justify-between items-center mb-2 z-10 relative pt-2 w-full">
                                     <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest">Level {currentLevel}</span>
                                     <span className="text-[10px] font-extrabold text-primary shrink-0">{totalXP} XP</span>
                                 </div>
@@ -1893,9 +1856,25 @@
                         
                         <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 md:px-12 lg:px-16 py-8 md:py-14 relative z-10">
                             
-                            {/* Gamification Mobile Bar */}
-                            <div className="md:hidden w-full flex items-center justify-between mb-8">
-                                <span className="text-[10px] font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-full uppercase tracking-widest">Lvl {currentLevel} &bull; {totalXP} XP</span>
+                            {/* Mobile Top Bar */}
+                            <div className="md:hidden w-full flex flex-col gap-4 mb-8">
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-teal-400 to-emerald-500 text-white rounded-[10px] flex items-center justify-center shadow-md transform rotate-3 shrink-0">
+                                            <i className="ph-fill ph-leaf text-base"></i>
+                                        </div>
+                                        <span className="font-extrabold font-heading text-textMain tracking-tight">Serene</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-full uppercase tracking-widest whitespace-nowrap">Lvl {currentLevel} &bull; {totalXP} XP</span>
+                                        <button onClick={() => window.location.reload()} className="w-8 h-8 flex items-center justify-center bg-surface border border-line text-textMain rounded-full shadow-sm active:scale-95 transition-transform shrink-0" title="Refresh App">
+                                            <i className="ph-bold ph-arrows-clockwise text-sm"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden border border-line shadow-inner">
+                                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{width: `${progressPercent}%`}}></div>
+                                </div>
                             </div>
 
                             {activeTab === 'today' && <TodayView />}
