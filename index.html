@@ -471,6 +471,12 @@
 
         const App = () => {
             const [isDarkMode, setIsDarkMode] = useLocalStorage('evolve_theme', false);
+            const [toast, setToast] = useState(null);
+
+            const showToast = (msg, type = 'info') => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 3000);
+            };
             
             useEffect(() => {
                 if(isDarkMode) {
@@ -601,6 +607,32 @@
                 }
                 fetchSupabaseData();
             }, [supabase, user]);
+
+            // SYNC XP TO DATABASE
+            useEffect(() => {
+                async function syncXP() {
+                    if (supabase && user) {
+                        try {
+                            const { data } = await supabase.from('user_settings').update({ 
+                                total_xp: totalXP, 
+                                level: currentLevel 
+                            }).eq('user_id', user.id).select();
+                            
+                            if (!data || data.length === 0) {
+                                await supabase.from('user_settings').insert([{ 
+                                    id: Math.floor(Math.random() * 2000000000), 
+                                    user_id: user.id, 
+                                    total_xp: totalXP, 
+                                    level: currentLevel,
+                                    group_code: groupCode,
+                                    nickname: nickname
+                                }]);
+                            }
+                        } catch (err) {}
+                    }
+                }
+                syncXP();
+            }, [totalXP, currentLevel, supabase, user]);
 
             const triggerAlarm = (title, body, audioUrl) => {
                 if ("Notification" in window && Notification.permission === "granted") {
@@ -785,9 +817,9 @@
                     <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
                         <div className="w-full lg:w-[35%] order-2 lg:order-1 relative">
                             {/* MOBILE PET HERO */}
-                            <div className="lg:hidden bg-gradient-to-br from-surface to-bg p-6 pb-5 rounded-3xl shadow-sm border border-line flex flex-col mb-8 overflow-hidden relative cursor-pointer" onClick={() => {
-                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'I am growing stronger!', 'Rawr!'];
-                                alert(msgs[Math.floor(Math.random() * msgs.length)]);
+                             <div className="lg:hidden bg-gradient-to-br from-surface to-bg p-6 pb-5 rounded-3xl shadow-sm border border-line flex flex-col mb-8 overflow-hidden relative cursor-pointer" onClick={() => {
+                                const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'Leveling up!', 'Keep it up!'];
+                                showToast(msgs[Math.floor(Math.random() * msgs.length)]);
                             }}>
                                 <div className="absolute -inset-10 bg-primary/5 blur-2xl rounded-full z-0 pointer-events-none animate-pet-glow"></div>
                                 <div className="flex items-center justify-between mb-4 w-full">
@@ -1366,23 +1398,53 @@
                     );
                 }
 
-                // Social members logic
-                const generateMockFriends = (code) => {
-                    const friends = [];
-                    
-                    friends.push({
+                const [roomMembers, setRoomMembers] = useState([]);
+                const [isRefreshing, setIsRefreshing] = useState(false);
+
+                const fetchRoomMembers = async () => {
+                    if (!supabase || !groupCode) return;
+                    setIsRefreshing(true);
+                    try {
+                        const { data, error } = await supabase
+                            .from('user_settings')
+                            .select('user_id, nickname, total_xp, level')
+                            .eq('group_code', groupCode);
+                        
+                        if (data) {
+                            // Filter out current user from fetched data to avoid duplicates, 
+                            // we'll add the current user manually with latest local state
+                            const others = data.filter(m => m.user_id !== user?.id).map(m => ({
+                                id: m.user_id,
+                                username: m.nickname || 'Anonymous',
+                                level: m.level || 1,
+                                xp: m.total_xp || 0,
+                                streak: 0, // Streak syncing would require more DB changes
+                                isMe: false
+                            }));
+                            setRoomMembers(others);
+                        }
+                    } catch (err) {
+                        console.error("Error fetching members:", err);
+                    } finally {
+                        setIsRefreshing(false);
+                    }
+                };
+
+                useEffect(() => {
+                    fetchRoomMembers();
+                }, [groupCode]);
+
+                const leaderboard = [
+                    {
                         id: user?.id || 'me',
                         username: nickname || (user?.email ? user.email.split('@')[0] : 'You'),
                         level: currentLevel,
                         xp: totalXP,
                         streak: globalBestStreak,
                         isMe: true
-                    });
-                    
-                    return friends.sort((a, b) => b.xp - a.xp);
-                };
-
-                const leaderboard = generateMockFriends(groupCode);
+                    },
+                    ...roomMembers
+                ].sort((a, b) => b.xp - a.xp);
 
                 return (
                     <div className="animate-fade-in w-full space-y-10">
@@ -1396,7 +1458,7 @@
                                 </p>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => navigator.clipboard.writeText(groupCode).then(()=>alert('Code copied!'))} className="bg-surface border border-line text-textMain px-4 py-2.5 rounded-xl text-xs font-extrabold shadow-sm hover:bg-bg transition-all flex items-center gap-2">
+                                <button onClick={() => navigator.clipboard.writeText(groupCode).then(()=>showToast("Code copied!"))} className="bg-surface border border-line text-textMain px-4 py-2.5 rounded-xl text-xs font-extrabold shadow-sm hover:bg-bg transition-all flex items-center gap-2">
                                     <i className="ph-bold ph-copy text-sm"></i> Copy Code
                                 </button>
                                 <button onClick={handleLeave} className="bg-red-500/10 text-red-500 px-4 py-2.5 rounded-xl text-xs font-extrabold hover:bg-red-500/20 transition-all flex items-center gap-2">
@@ -1408,8 +1470,12 @@
                         <div className="bg-primary/5 border border-primary/20 text-primary p-4 rounded-2xl text-xs font-bold flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
                             <div className="flex items-center gap-3">
                                 <i className="ph-fill ph-info text-xl shrink-0"></i>
-                                <p>Simulated multiplayer preview. Generate unique codes to see different squad lineups!</p>
+                                <p>You are now connected to the live room. Other users with this code will appear here automatically.</p>
                             </div>
+                            <button onClick={fetchRoomMembers} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl hover:bg-primary/90 transition-all shrink-0">
+                                <i className={`ph-bold ph-arrows-clockwise ${isRefreshing ? 'animate-spin' : ''}`}></i>
+                                {isRefreshing ? 'Syncing...' : 'Sync Room'}
+                            </button>
                         </div>
 
                         <div className="bg-surface rounded-3xl shadow-sm border border-line overflow-hidden flex flex-col">
@@ -1549,11 +1615,11 @@
                                                     if (supabase && user) {
                                                         const { data, error } = await supabase.from('user_settings').update({ nickname: newNick }).eq('user_id', user.id).select();
                                                         if (error) {
-                                                            alert("Failed to update nickname: " + error.message);
+                                                            showToast("Failed to update nickname: " + error.message, 'error');
                                                         } else if (!data || data.length === 0) {
                                                             const { error: insertErr } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, nickname: newNick }]);
                                                             if (insertErr) {
-                                                                alert("Failed to insert nickname: " + insertErr.message);
+                                                                showToast("Failed to insert nickname: " + insertErr.message, 'error');
                                                             }
                                                         }
                                                     }
@@ -1601,7 +1667,7 @@
                                                         const { data } = await supabase.from('user_settings').update({ custom_audio: '' }).eq('user_id', user.id).select();
                                                         if (!data || data.length === 0) {
                                                             const { error } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, custom_audio: '' }]);
-                                                            if (error) alert("Failed to clear audio: " + error.message);
+                                                            if (error) showToast("Failed to clear audio: " + error.message, 'error');
                                                         }
                                                     }
                                                 }} className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors" title="Remove custom sound">
@@ -1613,7 +1679,7 @@
                                                     const file = e.target.files[0];
                                                     if(file) {
                                                         if (file.size > 2 * 1024 * 1024) {
-                                                            alert("Audio file too large. Please select a file under 2MB.");
+                                                            showToast("Audio file too large. Please select a file under 2MB.", "error");
                                                             return;
                                                         }
                                                         const reader = new FileReader();
@@ -1624,7 +1690,7 @@
                                                                 const { data } = await supabase.from('user_settings').update({ custom_audio: base64Audio }).eq('user_id', user.id).select();
                                                                 if (!data || data.length === 0) {
                                                                     const { error } = await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, custom_audio: base64Audio }]);
-                                                                    if (error) alert("Failed to save audio: " + error.message);
+                                                                    if (error) showToast("Failed to save audio: " + error.message, 'error');
                                                                 }
                                                             }
                                                         };
@@ -1820,7 +1886,7 @@
                             {/* Gamification Level Box (Desktop only) */}
                             <div className="hidden md:flex flex-col bg-input border border-line p-5 rounded-3xl mx-1 mb-6 shadow-sm relative overflow-hidden group cursor-pointer" onClick={() => {
                                 const msgs = ['You got this!', 'Stay focused!', 'Keep the streak alive!', 'Leveling up!', 'Keep it up!'];
-                                alert(msgs[Math.floor(Math.random() * msgs.length)]);
+                                showToast(msgs[Math.floor(Math.random() * msgs.length)]);
                             }}>
                                 <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-40 h-40 bg-primary/20 blur-3xl rounded-full z-0 pointer-events-none group-hover:bg-primary/30 transition-colors"></div>
                                 <div className="flex justify-between items-center mb-2 z-10 relative pt-2 w-full">
@@ -1885,6 +1951,18 @@
                             {activeTab === 'review' && <ReviewView />}
                             {activeTab === 'settings' && <SettingsView />}
                         </div>
+
+                        {/* Custom Toast Notification */}
+                        {toast && (
+                            <div className="fixed bottom-24 md:bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-fade-in pointer-events-none">
+                                <div className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-surface border-line text-textMain'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${toast.type === 'error' ? 'bg-red-500/10' : 'bg-primary/10 text-primary'}`}>
+                                        <i className={`ph-bold ${toast.type === 'error' ? 'ph-warning-circle' : 'ph-info'}`}></i>
+                                    </div>
+                                    <span className="font-extrabold text-sm">{toast.msg}</span>
+                                </div>
+                            </div>
+                        )}
                     </main>
 
                     {activeAlarm && (
