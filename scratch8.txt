@@ -1,8 +1,0 @@
-﻿
-LineNumber Line                                                                                                        
----------- ----                                                                                                        
-       790                                 alert(msgs[Math.floor(Math.random() * msgs.length)]);                       
-      1399                                 <button onClick={() => navigator.clipboard.writeText(groupCode).then(()=>...
-      1616                                                             alert("Audio file too large. Please select a ...
-
-
