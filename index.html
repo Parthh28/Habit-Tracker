@@ -490,7 +490,7 @@
             const [checkins, setCheckins] = useState({}); 
             const [moods, setMoods] = useState({}); 
             const [notes, setNotes] = useState({}); 
-            const [customAudio, setCustomAudio] = useState('');
+            const [customAudio, setCustomAudio] = useLocalStorage('evolve_custom_audio', '');
             const [petType, setPetType] = useState('dragon');
             const [groupCode, setGroupCode] = useState('');
             const [nickname, setNickname] = useState('');
@@ -573,6 +573,7 @@
                         if (settings) {
                             setGroupCode(settings.group_code || '');
                             setNickname(settings.nickname || '');
+                            setCustomAudio(settings.custom_audio || '');
                         } else {
                             console.log("No settings found, creating default row...");
                             await supabase.from('user_settings').insert([{ id: Math.floor(Math.random() * 2000000000), user_id: user.id, group_code: '', nickname: '' }]);
