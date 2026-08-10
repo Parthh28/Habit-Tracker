@@ -116,6 +116,60 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
+        /* INDEXEDDB UTILITY FOR LARGE ASSETS (Audio) */
+        const AudioStore = {
+            dbName: 'SereneAudioDB',
+            storeName: 'audio',
+            getDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.dbName, 1);
+                    request.onupgradeneeded = (e) => {
+                        if (!e.target.result.objectStoreNames.contains(this.storeName)) {
+                            e.target.result.createObjectStore(this.storeName);
+                        }
+                    };
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            },
+            async save(key, data) {
+                try {
+                    const db = await this.getDB();
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction(this.storeName, 'readwrite');
+                        tx.objectStore(this.storeName).put(data, key);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                } catch (e) { console.error('AudioStore save error:', e); }
+            },
+            async get(key) {
+                try {
+                    const db = await this.getDB();
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction(this.storeName, 'readonly');
+                        const request = tx.objectStore(this.storeName).get(key);
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                } catch (e) { 
+                    console.error('AudioStore get error:', e);
+                    return null;
+                }
+            },
+            async remove(key) {
+                try {
+                    const db = await this.getDB();
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction(this.storeName, 'readwrite');
+                        tx.objectStore(this.storeName).delete(key);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                } catch (e) { console.error('AudioStore remove error:', e); }
+            }
+        };
+
         /* INITIAL DEMO DATA */
         const DEMO_HABITS = [
             { id: '1', name: 'Morning Meditation', description: 'At least 10 minutes session', priority: 'High', category: 'Health', reminderTime: '07:00', color: '#4A7C59', createdAt: new Date().toISOString() },
@@ -255,7 +309,40 @@
             const [checkins, setCheckins] = useLocalStorage('serene_checkins', {}); 
             const [moods, setMoods] = useLocalStorage('serene_moods', {}); 
             const [notes, setNotes] = useLocalStorage('serene_notes', {}); 
-            const [customAudio, setCustomAudio] = useLocalStorage('serene_custom_audio', '');
+            
+            // Custom Audio state with IndexedDB persistence
+            const [customAudio, setCustomAudioState] = useState('');
+            const setCustomAudio = async (val) => {
+                setCustomAudioState(val);
+                if (val) {
+                    await AudioStore.save('custom_alarm', val);
+                } else {
+                    await AudioStore.remove('custom_alarm');
+                }
+            };
+
+            useEffect(() => {
+                const loadAudio = async () => {
+                    const data = await AudioStore.get('custom_alarm');
+                    if (data) {
+                        setCustomAudioState(data);
+                    } else {
+                        // Migration from localStorage
+                        const legacyData = localStorage.getItem('serene_custom_audio');
+                        if (legacyData) {
+                            try {
+                                const parsed = JSON.parse(legacyData);
+                                if (parsed) {
+                                    setCustomAudioState(parsed);
+                                    await AudioStore.save('custom_alarm', parsed);
+                                    localStorage.removeItem('serene_custom_audio');
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                };
+                loadAudio();
+            }, []);
             const [petType, setPetType] = useLocalStorage('serene_pet_type', 'dragon');
             
             const [snoozedAlarms, setSnoozedAlarms] = useLocalStorage('serene_snoozed', []); 
@@ -563,75 +650,193 @@
             };
 
             const FocusView = () => {
-                const [customMinutes, setCustomMinutes] = useState(25);
-                const [timeLeft, setTimeLeft] = useState(25 * 60);
+                const PRESETS = {
+                    standard: { work: 25, break: 5, cycles: 4, label: '25/5 Focus' },
+                    deep: { work: 50, break: 10, cycles: 2, label: '50/10 Deep' },
+                    custom: { work: 25, break: 5, cycles: 4, label: 'Custom' }
+                };
+
+                const [preset, setPreset] = useState('standard');
+                const [settings, setSettings] = useState(PRESETS.standard);
+                const [mode, setMode] = useState('work'); // 'work' | 'break'
+                const [timeLeft, setTimeLeft] = useState(PRESETS.standard.work * 60);
                 const [isActive, setIsActive] = useState(false);
-                
+                const [currentCycle, setCurrentCycle] = useState(1);
+                const [showSettings, setShowSettings] = useState(false);
+
                 useEffect(() => {
                     let interval = null;
                     if (isActive && timeLeft > 0) {
                         interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
                     } else if (isActive && timeLeft === 0) {
                         setIsActive(false);
-                        triggerAlarm("Focus Zone", "Time is up! Great job focusing.", customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/glass.mp3');
+                        
+                        let nextMode = mode;
+                        let nextTime = 0;
+                        let nextCycle = currentCycle;
+                        
+                        if (mode === 'work') {
+                            triggerAlarm("Break Time", `Great job! Take a ${settings.break}-minute break.`, customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/glass.mp3');
+                            nextMode = 'break';
+                            nextTime = settings.break * 60;
+                        } else {
+                            if (currentCycle >= settings.cycles) {
+                                triggerAlarm("Session Complete", "You've finished all your focus rounds!", customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/glass.mp3');
+                                nextMode = 'work';
+                                nextTime = settings.work * 60;
+                                nextCycle = 1;
+                            } else {
+                                triggerAlarm("Work Time", "Break is over! Back to focus.", customAudio || 'https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.1/sounds/glass.mp3');
+                                nextMode = 'work';
+                                nextTime = settings.work * 60;
+                                nextCycle = currentCycle + 1;
+                            }
+                        }
+                        
+                        setMode(nextMode);
+                        setTimeLeft(nextTime);
+                        setCurrentCycle(nextCycle);
                     }
                     return () => clearInterval(interval);
-                }, [isActive, timeLeft]);
-
-                const handleSliderChange = (e) => {
-                    const mins = parseInt(e.target.value);
-                    setCustomMinutes(mins);
-                    setIsActive(false);
-                    setTimeLeft(mins * 60);
-                };
-
-                const resetTimer = () => {
-                    setIsActive(false);
-                    setTimeLeft(customMinutes * 60);
-                };
+                }, [isActive, timeLeft, mode, currentCycle, settings, customAudio]);
 
                 const toggleTimer = () => setIsActive(!isActive);
+                const resetTimer = () => {
+                    setIsActive(false);
+                    setMode('work');
+                    setCurrentCycle(1);
+                    setTimeLeft(settings.work * 60);
+                };
+                
+                const handlePresetChange = (p) => {
+                    setPreset(p);
+                    const newSettings = { ...PRESETS[p] };
+                    if (p === 'custom') {
+                        setShowSettings(true);
+                        // keep current custom settings if they exist
+                    } else {
+                        setShowSettings(false);
+                        setSettings(newSettings);
+                        setIsActive(false);
+                        setMode('work');
+                        setCurrentCycle(1);
+                        setTimeLeft(newSettings.work * 60);
+                    }
+                };
+
+                const updateCustom = (field, val) => {
+                    const newSettings = { ...settings, [field]: parseInt(val) || 1 };
+                    setSettings(newSettings);
+                    setIsActive(false);
+                    setMode('work');
+                    setCurrentCycle(1);
+                    setTimeLeft(newSettings.work * 60);
+                };
+
                 const formatTime = (seconds) => {
                     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
                     const s = (seconds % 60).toString().padStart(2, '0');
                     return `${m}:${s}`;
                 };
 
+                let total = mode === 'work' ? settings.work * 60 : settings.break * 60;
+                const progress = (timeLeft / total);
+                const circleRadius = 140;
+                const circleCircumference = 2 * Math.PI * circleRadius;
+                const strokeDashoffset = circleCircumference - progress * circleCircumference;
+
+                const isWork = mode === 'work';
+
                 return (
-                    <div className="animate-fade-in w-full space-y-10 flex flex-col items-center justify-center min-h-[70vh]">
-                        <header className="mb-2 text-center">
-                            <h1 className="text-3xl md:text-5xl font-heading font-extrabold tracking-tight text-textMain">Focus Zone</h1>
-                            <p className="text-sm font-semibold tracking-wide text-textMuted uppercase mt-3">Custom Time Selection</p>
+                    <div className="animate-fade-in w-full flex flex-col items-center justify-center min-h-[75vh] relative overflow-hidden px-4 py-8 md:py-12 transition-colors duration-1000">
+                        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] md:w-[500px] md:h-[500px] rounded-full blur-[80px] md:blur-[120px] pointer-events-none transition-all duration-1000 ease-in-out bg-primary ${isActive ? 'scale-110 opacity-10' : 'scale-90 opacity-5'}`}></div>
+
+                        <header className="mb-6 md:mb-8 text-center z-10 relative">
+                            <h1 className="text-4xl md:text-5xl font-heading font-extrabold tracking-tight text-textMain drop-shadow-sm">Pomodoro</h1>
+                            <div className={`inline-block mt-3 px-5 py-1.5 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest text-white shadow-md transition-colors duration-500 ${isWork ? 'bg-primary' : 'bg-blue-500'}`}>
+                                Round {currentCycle}/{settings.cycles} &bull; {isWork ? 'Focusing' : 'Resting'}
+                            </div>
                         </header>
 
-                        <div className="w-full max-w-sm px-6 py-6 bg-surface border border-line rounded-3xl shadow-sm z-10 relative flex flex-col items-center gap-4">
-                            <div className="flex justify-between w-full text-xs font-bold text-textMuted uppercase tracking-widest items-center">
-                                <span>1m</span>
-                                <span className="text-primary font-extrabold text-base bg-primary/10 px-3 py-1 rounded-lg">{customMinutes} MIN</span>
-                                <span>120m</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="1" 
-                                max="120" 
-                                value={customMinutes} 
-                                onChange={handleSliderChange}
-                                className="w-full h-2.5 bg-input rounded-full appearance-none cursor-pointer accent-primary focus:outline-none"
-                            />
+                        {/* Presets */}
+                        <div className="flex gap-2 p-1.5 bg-surface/40 backdrop-blur-xl border border-line rounded-2xl shadow-sm z-10 w-full max-w-sm mb-4">
+                            {['standard', 'deep', 'custom'].map(p => (
+                                <button 
+                                    key={p}
+                                    onClick={() => handlePresetChange(p)} 
+                                    className={`flex-1 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-300 ${preset === p ? 'bg-surface shadow-md text-textMain scale-100' : 'text-textMuted hover:bg-surface/50 scale-95 hover:scale-100'}`}
+                                >
+                                    {PRESETS[p].label}
+                                </button>
+                            ))}
                         </div>
 
-                        <div className="relative w-80 h-80 md:w-96 md:h-96 flex items-center justify-center bg-surface border-[8px] md:border-[12px] border-bg rounded-full shadow-inner my-2 md:my-6 transition-colors duration-500">
-                            <div className={`absolute inset-0 rounded-full border-[8px] transition-colors duration-1000 ${isActive ? 'border-primary/50 scale-100' : 'border-transparent scale-95 opacity-0'}`} style={{clipPath: 'circle(50% at 50% 50%)'}}></div>
-                            <h2 className="text-7xl md:text-[100px] font-heading font-bold text-textMain tracking-tighter tabular-nums z-10">{formatTime(timeLeft)}</h2>
+                        {preset === 'custom' && (
+                            <div className="flex gap-4 p-4 mb-6 bg-surface/60 backdrop-blur-md rounded-2xl border border-line shadow-sm z-10 animate-fade-in w-full max-w-sm transition-all duration-300">
+                                <div className="flex flex-col flex-1">
+                                    <label className="text-[10px] font-bold text-textMuted uppercase tracking-widest mb-1 text-center">Work (min)</label>
+                                    <input type="number" min="1" max="120" value={settings.work} onChange={(e) => updateCustom('work', e.target.value)} className="w-full bg-input rounded-xl p-2 text-sm font-bold text-center focus:ring-2 focus:ring-primary/50 outline-none transition-all" />
+                                </div>
+                                <div className="flex flex-col flex-1">
+                                    <label className="text-[10px] font-bold text-textMuted uppercase tracking-widest mb-1 text-center">Break (min)</label>
+                                    <input type="number" min="1" max="60" value={settings.break} onChange={(e) => updateCustom('break', e.target.value)} className="w-full bg-input rounded-xl p-2 text-sm font-bold text-center focus:ring-2 focus:ring-primary/50 outline-none transition-all" />
+                                </div>
+                                <div className="flex flex-col flex-1">
+                                    <label className="text-[10px] font-bold text-textMuted uppercase tracking-widest mb-1 text-center">Rounds</label>
+                                    <input type="number" min="1" max="20" value={settings.cycles} onChange={(e) => updateCustom('cycles', e.target.value)} className="w-full bg-input rounded-xl p-2 text-sm font-bold text-center focus:ring-2 focus:ring-primary/50 outline-none transition-all" />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Circular Timer */}
+                        <div className="relative w-72 h-72 md:w-[340px] md:h-[340px] flex items-center justify-center z-10 group mb-4 mt-2">
+                            <svg className="absolute inset-0 w-full h-full -rotate-90 drop-shadow-xl" viewBox="0 0 320 320">
+                                <circle cx="160" cy="160" r={circleRadius} fill="none" className="stroke-surface/80 dark:stroke-surface" strokeWidth="12" />
+                                <circle cx="160" cy="160" r={circleRadius} fill="none" className={isWork ? 'stroke-primary' : 'stroke-blue-500'} strokeWidth="12" strokeLinecap="round" style={{ strokeDasharray: circleCircumference, strokeDashoffset: strokeDashoffset, transition: 'stroke-dashoffset 1s linear, stroke 0.5s ease-in-out' }} />
+                            </svg>
+                            
+                            <div className="flex flex-col items-center justify-center absolute inset-0 bg-surface/30 backdrop-blur-md m-6 rounded-full border border-line shadow-inner transition-colors duration-500 hover:bg-surface/40">
+                                <h2 className="text-6xl md:text-[80px] font-heading font-extrabold text-textMain tracking-tighter tabular-nums drop-shadow-md">
+                                    {formatTime(timeLeft)}
+                                </h2>
+                            </div>
                         </div>
                         
-                        <div className="flex gap-5 z-10">
-                            <button onClick={toggleTimer} className={`w-20 h-20 md:w-24 md:h-24 rounded-3xl shadow-lg flex items-center justify-center text-3xl md:text-4xl transition-transform hover:-translate-y-1 ${isActive ? 'bg-[#ffbc42] text-white' : 'bg-primary text-white'}`}>
-                                <i className={isActive ? 'ph-bold ph-pause' : 'ph-bold ph-play'}></i>
-                            </button>
-                            <button onClick={resetTimer} className="w-20 h-20 md:w-24 md:h-24 bg-surface border border-line rounded-3xl flex items-center justify-center text-3xl text-textMuted hover:text-textMain hover:bg-bg transition-all">
-                                <i className="ph-bold ph-arrow-counter-clockwise"></i>
-                            </button>
+                        {/* Controls */}
+                        <div className="flex flex-col items-center gap-8 z-10 mt-6 md:mt-10">
+                            <div className="flex items-center gap-4 md:gap-6">
+                                <button onClick={resetTimer} className="w-14 h-14 md:w-16 md:h-16 bg-surface/70 backdrop-blur-md border border-line rounded-3xl flex items-center justify-center text-2xl text-textMuted hover:text-textMain hover:bg-surface hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                                    <i className="ph-bold ph-arrow-counter-clockwise"></i>
+                                </button>
+                                
+                                <button 
+                                    onClick={toggleTimer} 
+                                    className={`w-20 h-20 md:w-24 md:h-24 rounded-[30px] flex items-center justify-center text-4xl text-white shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 relative overflow-hidden group ${isActive ? 'bg-[#ffbc42]' : 'bg-primary'}`}
+                                >
+                                    <div className="absolute inset-0 bg-white/20 translate-y-[120%] group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
+                                    <i className={`relative z-10 transition-transform duration-300 ${isActive ? 'ph-fill ph-pause scale-90' : 'ph-fill ph-play'}`}></i>
+                                </button>
+                                
+                                <button onClick={() => { setPreset('custom'); setShowSettings(true); }} className="w-14 h-14 md:w-16 md:h-16 bg-surface/70 backdrop-blur-md border border-line rounded-3xl flex items-center justify-center text-2xl text-textMuted hover:text-textMain hover:bg-surface hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                                    <i className="ph-bold ph-faders"></i>
+                                </button>
+                            </div>
+                            
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="flex items-center gap-3 bg-surface/60 backdrop-blur-md px-5 py-2.5 rounded-full border border-line shadow-sm max-w-sm flex-wrap justify-center">
+                                    {Array.from({length: Math.min(settings.cycles, 10)}).map((_, i) => {
+                                        const c = i + 1;
+                                        const isCompleted = currentCycle > c;
+                                        const isCurrent = currentCycle === c;
+                                        return (
+                                            <div key={c} className="relative" title={`Round ${c}`}>
+                                                <div className={`w-3.5 h-3.5 rounded-full transition-all duration-500 ${isCompleted ? 'scale-100 opacity-50 bg-primary' : isCurrent ? 'scale-125 bg-primary shadow-sm' : 'bg-surface border border-line'}`}></div>
+                                            </div>
+                                        )
+                                    })}
+                                    {settings.cycles > 10 && <span className="text-xs font-bold text-textMuted">+{settings.cycles - 10}</span>}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
@@ -963,8 +1168,8 @@
                                                 <input type="file" accept="audio/*" onChange={(e) => {
                                                     const file = e.target.files[0];
                                                     if(file) {
-                                                        if (file.size > 2 * 1024 * 1024) {
-                                                            alert("Audio file too large. Please select a file under 2MB.");
+                                                        if (file.size > 5 * 1024 * 1024) {
+                                                            alert("Audio file too large. Please select a file under 5MB.");
                                                             return;
                                                         }
                                                         const reader = new FileReader();
@@ -1071,6 +1276,7 @@
                                     <button onClick={() => {
                                         if(confirm('Warning: This deletes all data permanently. Are you sure?')) {
                                             setHabits([]); setCheckins({}); setMoods({}); setNotes({});
+                                            setCustomAudio('');
                                             localStorage.removeItem('serene_theme');
                                         }
                                     }} className="bg-red-500/10 text-red-500 px-5 py-3 rounded-xl text-xs font-extrabold hover:bg-red-500/20 transition-colors shrink-0">Clear Data</button>
