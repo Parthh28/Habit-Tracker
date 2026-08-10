@@ -1090,99 +1090,98 @@
 
                 const totalDuration = getSessionDuration(mode, sessionType, customStudyMins, customBreakMins) * 60;
                 const percentage = totalDuration > 0 ? timeLeft / totalDuration : 0;
-                const radius = 140;
-                const circumference = 2 * Math.PI * radius;
-                const strokeDashoffset = circumference - percentage * circumference;
 
                 return (
-                    <div className="animate-fade-in w-full space-y-6 flex flex-col items-center justify-center min-h-[60vh]">
-                        <header className="mb-1 text-center">
-                            <h1 className="text-3xl md:text-4xl font-heading font-extrabold tracking-tight text-textMain">Focus Zone</h1>
-                            <p className="text-xs font-semibold tracking-wide text-textMuted uppercase mt-2">Pomodoro Timer</p>
+                    <div className="animate-fade-in w-full space-y-8 md:space-y-12 flex flex-col items-center justify-center min-h-[75vh] py-8">
+                        <header className="mb-2 text-center">
+                            <h1 className="text-4xl md:text-6xl font-heading font-extrabold tracking-tight text-textMain">Focus Zone</h1>
+                            <p className="text-sm md:text-base font-semibold tracking-wide text-textMuted uppercase mt-3">Pomodoro Timer</p>
                         </header>
 
-                        <div className="flex bg-surface p-1.5 rounded-2xl border border-line shadow-sm">
+                        <div className="flex bg-surface p-2 rounded-3xl border border-line shadow-md">
                             <button 
                                 onClick={() => { setMode('pomodoro25'); setSessionType('study'); }} 
-                                className={`px-4 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition-all ${mode === 'pomodoro25' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
+                                className={`px-6 py-3 rounded-2xl text-sm md:text-lg font-bold transition-all ${mode === 'pomodoro25' ? 'bg-primary text-white shadow-lg' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
                             >
                                 25 / 5
                             </button>
                             <button 
                                 onClick={() => { setMode('pomodoro50'); setSessionType('study'); }} 
-                                className={`px-4 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition-all ${mode === 'pomodoro50' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
+                                className={`px-6 py-3 rounded-2xl text-sm md:text-lg font-bold transition-all ${mode === 'pomodoro50' ? 'bg-primary text-white shadow-lg' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
                             >
                                 50 / 10
                             </button>
                             <button 
                                 onClick={() => { setMode('custom'); setSessionType('study'); }} 
-                                className={`px-4 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition-all ${mode === 'custom' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
+                                className={`px-6 py-3 rounded-2xl text-sm md:text-lg font-bold transition-all ${mode === 'custom' ? 'bg-primary text-white shadow-lg' : 'text-textMuted hover:text-textMain hover:bg-input'}`}
                             >
                                 Custom
                             </button>
                         </div>
 
                         {mode === 'custom' && (
-                            <div className="w-full max-w-sm px-5 py-4 bg-surface border border-line rounded-3xl shadow-sm z-10 relative flex flex-col gap-4">
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex justify-between w-full text-[11px] font-bold text-textMuted uppercase tracking-widest items-center">
+                            <div className="w-full max-w-md md:max-w-xl px-8 py-6 bg-surface border border-line rounded-[2rem] shadow-md z-10 relative flex flex-col gap-6">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex justify-between w-full text-xs md:text-sm font-bold text-textMuted uppercase tracking-widest items-center">
                                         <span>Study</span>
-                                        <span className="text-primary font-extrabold text-sm bg-primary/10 px-2.5 py-1 rounded-lg">{customStudyMins} MIN</span>
+                                        <span className="text-primary font-extrabold text-sm md:text-base bg-primary/10 px-3 py-1 rounded-xl">{customStudyMins} MIN</span>
                                     </div>
                                     <input 
                                         type="range" min="1" max="120" value={customStudyMins} 
                                         onChange={(e) => setCustomStudyMins(parseInt(e.target.value))}
-                                        className="w-full h-2 bg-input rounded-full appearance-none cursor-pointer accent-primary focus:outline-none"
+                                        className="w-full h-3 bg-input rounded-full appearance-none cursor-pointer accent-primary focus:outline-none"
                                     />
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex justify-between w-full text-[11px] font-bold text-textMuted uppercase tracking-widest items-center">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex justify-between w-full text-xs md:text-sm font-bold text-textMuted uppercase tracking-widest items-center">
                                         <span>Break</span>
-                                        <span className="text-blue-500 font-extrabold text-sm bg-blue-500/10 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg">{customBreakMins} MIN</span>
+                                        <span className="text-blue-500 font-extrabold text-sm md:text-base bg-blue-500/10 dark:bg-blue-900/30 px-3 py-1 rounded-xl">{customBreakMins} MIN</span>
                                     </div>
                                     <input 
                                         type="range" min="1" max="60" value={customBreakMins} 
                                         onChange={(e) => setCustomBreakMins(parseInt(e.target.value))}
-                                        className="w-full h-2 bg-input rounded-full appearance-none cursor-pointer accent-blue-500 focus:outline-none"
+                                        className="w-full h-3 bg-input rounded-full appearance-none cursor-pointer accent-blue-500 focus:outline-none"
                                     />
                                 </div>
                             </div>
                         )}
 
-                        <div className="flex flex-col items-center mt-2 md:mt-4">
-                            <span className={`px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider mb-[-0.8rem] md:mb-[-1rem] z-20 shadow-sm border ${sessionType === 'study' ? 'bg-primary text-white border-primary/20' : 'bg-blue-500 text-white border-blue-500/20'}`}>
+                        <div className="flex flex-col items-center mt-4 w-full">
+                            <span className={`px-6 py-2 rounded-full text-xs md:text-sm font-bold uppercase tracking-widest mb-[-1.2rem] md:mb-[-1.5rem] z-20 shadow-md border ${sessionType === 'study' ? 'bg-primary text-white border-primary/20' : 'bg-blue-500 text-white border-blue-500/20'}`}>
                                 {sessionType === 'study' ? 'Study Time' : 'Break Time'}
                             </span>
-                            <div className="relative w-64 h-64 md:w-72 md:h-72 flex items-center justify-center my-2 md:my-4 group">
-                                <svg className="absolute inset-0 w-full h-full transform -rotate-90 drop-shadow-sm" viewBox="0 0 320 320">
-                                    <circle 
-                                        cx="160" cy="160" r={radius} 
-                                        className="stroke-bg fill-surface transition-colors duration-500 shadow-inner" 
-                                        strokeWidth="16" 
-                                    />
-                                    <circle 
-                                        cx="160" cy="160" r={radius} 
-                                        className={`transition-all duration-1000 ease-linear ${sessionType === 'study' ? 'stroke-primary' : 'stroke-blue-500'}`}
-                                        strokeWidth="16" 
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeDasharray={circumference}
-                                        strokeDashoffset={strokeDashoffset}
-                                    />
-                                </svg>
-                                <div className="absolute inset-0 rounded-full shadow-[inset_0_4px_10px_rgba(0,0,0,0.05)] m-4 pointer-events-none"></div>
-                                <h2 className="text-6xl md:text-[76px] font-heading font-bold text-textMain tracking-tighter tabular-nums z-10">{formatTime(timeLeft)}</h2>
+                            
+                            <div className="relative w-full max-w-lg md:max-w-3xl h-48 md:h-72 bg-[#111] dark:bg-[#0a0a0a] rounded-[2.5rem] md:rounded-[3.5rem] flex flex-col items-center justify-center my-3 overflow-hidden shadow-2xl border-[6px] border-surface shadow-[0_15px_60px_rgba(0,0,0,0.15)]">
+                                {/* Digital Scanline Effect */}
+                                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[length:100%_4px] pointer-events-none opacity-70"></div>
+                                
+                                {/* Ambient Glow */}
+                                <div className={`absolute inset-0 opacity-20 blur-[50px] transition-colors duration-1000 ${sessionType === 'study' ? 'bg-primary' : 'bg-blue-500'}`}></div>
+                                
+                                <h2 
+                                    className={`text-[90px] md:text-[160px] font-mono font-black tracking-widest tabular-nums z-10 leading-none transition-colors duration-1000 ${sessionType === 'study' ? 'text-primary' : 'text-blue-500'}`}
+                                >
+                                    {formatTime(timeLeft)}
+                                </h2>
+
+                                {/* Linear Progress Bar */}
+                                <div className="absolute bottom-0 left-0 w-full h-2 md:h-3 bg-white/5">
+                                    <div 
+                                        className={`h-full transition-all duration-1000 ease-linear ${sessionType === 'study' ? 'bg-primary' : 'bg-blue-500'}`} 
+                                        style={{ width: `${percentage * 100}%` }}
+                                    ></div>
+                                </div>
                             </div>
                         </div>
                         
-                        <div className="flex gap-4 md:gap-5 z-10 items-center mt-0 md:mt-2">
-                            <button onClick={resetTimer} className="w-12 h-12 md:w-14 md:h-14 bg-surface border border-line rounded-2xl flex items-center justify-center text-xl text-textMuted hover:text-textMain hover:bg-input transition-all shadow-sm" title="Reset">
+                        <div className="flex gap-6 md:gap-10 z-10 items-center mt-2">
+                            <button onClick={resetTimer} className="w-16 h-16 md:w-20 md:h-20 bg-surface border border-line rounded-2xl md:rounded-3xl flex items-center justify-center text-3xl md:text-4xl text-textMuted hover:text-textMain hover:bg-input transition-all shadow-md hover:shadow-lg hover:-translate-y-1" title="Reset">
                                 <i className="ph-bold ph-arrow-counter-clockwise"></i>
                             </button>
-                            <button onClick={toggleTimer} className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl md:rounded-[1.75rem] shadow-xl flex items-center justify-center text-3xl transition-transform hover:-translate-y-1 ${isActive ? 'bg-[#ffbc42] text-white' : (sessionType === 'study' ? 'bg-primary' : 'bg-blue-500') + ' text-white'}`}>
+                            <button onClick={toggleTimer} className={`w-24 h-24 md:w-32 md:h-32 rounded-[2rem] md:rounded-[3rem] shadow-2xl flex items-center justify-center text-5xl md:text-6xl transition-transform hover:-translate-y-2 ${isActive ? 'bg-[#ffbc42] text-white' : (sessionType === 'study' ? 'bg-primary' : 'bg-blue-500') + ' text-white'}`}>
                                 <i className={isActive ? 'ph-bold ph-pause' : 'ph-bold ph-play'}></i>
                             </button>
-                            <button onClick={skipSession} className="w-12 h-12 md:w-14 md:h-14 bg-surface border border-line rounded-2xl flex items-center justify-center text-xl text-textMuted hover:text-textMain hover:bg-input transition-all shadow-sm" title="Skip Session">
+                            <button onClick={skipSession} className="w-16 h-16 md:w-20 md:h-20 bg-surface border border-line rounded-2xl md:rounded-3xl flex items-center justify-center text-3xl md:text-4xl text-textMuted hover:text-textMain hover:bg-input transition-all shadow-md hover:shadow-lg hover:-translate-y-1" title="Skip Session">
                                 <i className="ph-bold ph-fast-forward"></i>
                             </button>
                         </div>
